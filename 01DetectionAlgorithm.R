@@ -302,4 +302,121 @@ matched_rows <- class.df.part %>%
 
 write_csv(matched_rows,"~/Documents/GLOBARGO/data/classification_results_portion_data.csv")
        
-class.df.part %>% filter(WMO==)   
+# Manually classify data with Python script 05-ClassificationV2.ipynb :
+
+detected.events.df <- read_csv("~/Documents/GLOBARGO/data/detected_events.csv")
+
+manual.class.df <- read_csv("~/Documents/GLOBARGO/data/classification_results_manually_classified.csv")
+manual.class.df <- manual.class.df %>%  mutate(WMO = str_replace(WMO, "_plot$", ""))
+manual.class.df$CYCLE_NUMBER <- manual.class.df$Cycle
+
+# Find if there are outlying profiles 
+# Function to check if a group contains only category 0 or 4
+only_category_0_3_or_4 <- function(categories) {
+  all(categories %in% c(0, 4,3))
+}
+
+# Find WMOs with only category 0 or 4
+wm_only_0_3_or_4 <- manual.class.df %>%
+  group_by(WMO) %>%
+  filter(only_category_0_3_or_4(Category)) %>%
+  summarize(unique_categories = unique(Category))
+
+# Display the result
+print(wm_only_0_or_4)
+
+
+
+
+
+
+
+
+
+# Function to prioritize the category values
+prioritize_category <- function(categories) {
+  if (4 %in% categories) {
+    return(4)
+  } else if (1 %in% categories) {
+    return(1)
+  } else if (2 %in% categories) {
+    return(2)
+  } else if (3 %in% categories) {
+    return(3)
+  } else {
+    return(0)
+  }
+}
+
+# Find WMOs with only category 0 or 4
+anomalous_wmos <- manual.class.df %>%
+  group_by(WMO) %>%
+  filter(only_category_0_3_or_4(Category)) %>%
+  distinct(WMO)
+
+# Remove anomalous floats and apply the function to the data frame
+manual.class.df_filtered <- manual.class.df %>%
+  filter(!WMO %in% anomalous_wmos$WMO) %>%
+  group_by(WMO, Cycle) %>%
+  summarize(Category = prioritize_category(Category), .groups = 'drop') %>%
+  filter(Category != 4)
+
+# Calculate the proportion of each category
+category_proportions <- manual.class.df_filtered %>%
+  group_by(Category) %>%
+  summarize(Count = n()) %>%
+  mutate(Proportion = Count / sum(Count))
+
+# Display the result
+print(category_proportions)
+
+# Remove anomalous floats and apply the function to the data frame
+manual.class.df_filtered <- manual.class.df %>%
+  filter(!WMO %in% anomalous_wmos$WMO) %>%
+  group_by(WMO, Cycle) %>%
+  summarize(Category = prioritize_category(Category), .groups = 'drop') %>%
+  filter(Category != 4)
+
+# Calculate the proportion of each category
+category_proportions <- manual.class.df_filtered %>%
+  group_by(Category) %>%
+  summarize(Count = n()) %>%
+  mutate(Proportion = Count / sum(Count))
+
+
+
+# Combine both dataframes
+manual.class.df_filtered <- manual.class.df_filtered %>%
+  rename(CYCLE_NUMBER = Cycle)
+
+# Convert the WMO column in detected.events.df to character type
+detected.events.df <- detected.events.df %>%
+  mutate(WMO = as.character(WMO))
+
+
+# Perform the full join
+combined_df <- full_join(manual.class.df_filtered, detected.events.df, by = c("WMO", "CYCLE_NUMBER"))
+
+# Display the result
+combined_df_filtered <- combined_df %>%
+  filter(!is.na(CONSISTENT_ANOM))
+
+
+write_csv(combined_df_filtered,file = "~/Documents/GLOBARGO/data/classification_results_manually_classified_merged.csv")
+
+# Subduction  events df :
+df <- combined_df_filtered %>% filter(Category %in% c(1,2)) 
+write_csv(df,"~/Documents/GLOBARGO/data/subduction_events.csv")
+combined_df_filtered <- combined_df_filtered %>% filter(Category %in% c(1,2,3,0))
+category_proportions_final <- combined_df_filtered %>%
+  group_by(Category) %>%
+  summarize(Count = n()) %>%
+  mutate(Proportion = Count / sum(Count))
+# A tibble: 4 × 3
+### Category Count Proportion
+###
+### 0   1977    0.497 
+### 1   852     0.214 
+### 2   958     0.241 
+### 3   194     0.0487
+
