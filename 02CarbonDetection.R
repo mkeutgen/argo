@@ -1,5 +1,5 @@
 # Partie2BIS detection downscaled
-setwd("~/Documents/ARGO")
+setwd("~/Documents/GLOBARGO")
 
 library(tidyverse)
 library(robustbase)
@@ -10,7 +10,7 @@ library(ggpubr)
 set.seed(10)
 wmolist <- readRDS("~/Documents/ARGO/BGC_Argo_WMO_PSAL_BBP_DOXY_TEMP.rds")
 # Read the manually classified dataframe
-classified_df <- read.csv("~/Documents/ARGO/ProcessedData/classification_results_merged.csv")
+classified_df <- read.csv("~/Documents/GLOBARGO/data/classification_results_manually_classified_merged.csv")
 classified_df$WMO <- gsub("_plot", "", classified_df$WMO)
 
 #Create two distinct df with high and low confidence subduction events
@@ -22,11 +22,11 @@ wmo_cat2 <- cat2_events$WMO %>% unique()
 
 detected.events.list <- list()
 # j, indicator for the WMO
-for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
+for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
   try({
     # Start with first WMO of the random sample
-    #wmo <- wmo_cat1[j]
-    wmo <- wmo_cat2[j]
+    wmo <- wmo_cat1[j]
+    #wmo <- wmo_cat2[j]
     #wmo <- 5904470
     #wmo <-  5905073  # with soooo much zero residuals, for instance prof 65 has sooo tiny little bumps and it'd
     # be nice if there was a way for the method not to detect it... However 29 and 40 are legit AF
@@ -40,7 +40,7 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
     #wmo <- 5904179
     #wmo <- 1902332
     #cycle_number <- cat1_events %>% filter(WMO== wmo) %>% select(Cycle) %>% unique() %>% as_vector()
-    cycle_number <- cat1_events %>% filter(WMO== wmo) %>% select(Cycle) %>% as_vector()
+    cycle_number <- cat1_events %>% filter(WMO== wmo) %>% select(CYCLE_NUMBER) %>% as_vector()
     
     
     # LOT OF ANOMALIES IFF
@@ -261,7 +261,8 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
     
     
     # Find time where outlying and associated pressure level :
-    carb_eddy.id <- B %>% filter(OUT.S==1) %>% unique()
+     # !!!! in this case OUT.T == 1 so only CARBON outlying profile are selected
+    carb_eddy.id <- B %>% filter(OUT.T==1) %>% unique()
     carb_eddy.id <- carb_eddy.id %>% filter(PRES_ADJUSTED <= 700) %>% filter(PRES_ADJUSTED >= 200)
     
     carb_eddy.id$WMO <- wmo
@@ -367,7 +368,7 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
     # Check if list.plots is not empty
     if (length(list.plots) > 0) {
       # Create directory if it doesn't exist
-      dir <- paste0("~/Documents/ARGO/CarbonFiguresCat1/", wmo)
+      dir <- paste0("~/Documents/GLOBARGO/figures/CarbonFiguresCat1/", wmo)
       if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE)
       }
@@ -397,11 +398,11 @@ detected.events.list <- lapply(detected.events.list, function(x) {
 detected.events.df <- detected.events.list %>% bind_rows()
 detected.events.df 
 
-#write_csv(detected.events.df,"~/Documents/ARGO/ProcessedData/detected_events_unique_with_carbon_cat1.csv")
-write_csv(detected.events.df,"~/Documents/ARGO/ProcessedData/detected_events_unique_with_carbon_cat2.csv")
+write_csv(detected.events.df,"~/Documents/ARGO/ProcessedData/detected_events_unique_with_carbon_cat1.csv")
+#write_csv(detected.events.df,"~/Documents/ARGO/data/detected_events_unique_with_carbon_cat2.csv")
 
 
-cat1_df <- read_csv("~/Documents/ARGO/ProcessedData/detected_events_unique_with_carbon_cat1.csv")
+cat1_df <- read_csv("~/Documents/ARGO/data/detected_events_unique_with_carbon_cat1.csv")
 cat1_df$OUT.T %>% sum()
 detected.events.df$OUT.T %>% sum()
 detected.events.df %>% nrow()

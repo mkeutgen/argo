@@ -253,4 +253,4 @@ trapezoid_areas_bbp <- avg_differences_bbp * distances
 total_area_aou <- sum(trapezoid_areas_aou, na.rm = TRUE)
 total_area_bbp <- sum(trapezoid_areas_bbp, na.rm = TRUE)
 
-
+# Transfer to production for quantiifcation of the BBP anomaly ALSO, see if applicable to smaller anomalies than the well defined Llort and Michael's anomalies
