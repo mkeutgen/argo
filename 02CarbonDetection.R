@@ -22,11 +22,11 @@ wmo_cat2 <- cat2_events$WMO %>% unique()
 
 detected.events.list <- list()
 # j, indicator for the WMO
-for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
+for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
   try({
     # Start with first WMO of the random sample
-    wmo <- wmo_cat1[j]
-    #wmo <- wmo_cat2[j]
+    #wmo <- wmo_cat1[j]
+    wmo <- wmo_cat2[j]
     #wmo <- 5904470
     #wmo <-  5905073  # with soooo much zero residuals, for instance prof 65 has sooo tiny little bumps and it'd
     # be nice if there was a way for the method not to detect it... However 29 and 40 are legit AF
@@ -368,7 +368,7 @@ for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
     # Check if list.plots is not empty
     if (length(list.plots) > 0) {
       # Create directory if it doesn't exist
-      dir <- paste0("~/Documents/GLOBARGO/figures/CarbonFiguresCat1/", wmo)
+      dir <- paste0("~/Documents/GLOBARGO/figures/CarbonFiguresCat2/", wmo)
       if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE)
       }
@@ -398,11 +398,10 @@ detected.events.list <- lapply(detected.events.list, function(x) {
 detected.events.df <- detected.events.list %>% bind_rows()
 detected.events.df 
 
-write_csv(detected.events.df,"~/Documents/ARGO/ProcessedData/detected_events_unique_with_carbon_cat1.csv")
-#write_csv(detected.events.df,"~/Documents/ARGO/data/detected_events_unique_with_carbon_cat2.csv")
+#write_csv(detected.events.df,"~/Documents/GLOBARGO/data/detected_events_unique_with_carbon_cat1.csv")
+write_csv(detected.events.df,"~/Documents/GLOBARGO/data/detected_events_unique_with_carbon_cat2.csv")
 
-
-cat1_df <- read_csv("~/Documents/ARGO/data/detected_events_unique_with_carbon_cat1.csv")
+#cat1_df <- read_csv("~/Documents/ARGO/data/detected_events_unique_with_carbon_cat1.csv")
 cat1_df$OUT.T %>% sum()
 detected.events.df$OUT.T %>% sum()
 detected.events.df %>% nrow()
