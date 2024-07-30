@@ -138,7 +138,7 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
       group_by(CYCLE_NUMBER) %>%
       group_split()
     
-    # Apply operations to all elements of the list
+    # For Carbon Detection, we first apply a moving median (k = 3) filter to filter small anomalies
     list_of_tibbles <- lapply(list_of_tibbles, function(df) {
       df$BBP700_ADJUSTEDORIG <- df$BBP700_ADJUSTED
       df$BBP700_ADJUSTED <- rollmedian(df$BBP700_ADJUSTED, k = 3, fill = NA)
