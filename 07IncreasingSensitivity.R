@@ -15,6 +15,37 @@ detected.events.list <- list()
 wmo <- wmolist[j]
 wmo <- 5904677
 # cycle_number <- results %>% filter(WMO == wmo) %>% select(CYCLE_NUMBER) %>% unique() %>% as_vector()
+
+
+# Necessary functions : 
+calculate_derivative <- function(data) {
+  # Calculate the difference in VALUE and PRES_ADJUSTED
+  data %>%
+    arrange(PRES_ADJUSTED) %>%
+    mutate(
+      dVALUE = c(NA, diff(VALUE) / diff(PRES_ADJUSTED))
+    )
+}
+# Post-processing function that check if there's indeed a peak at the detected_level : 
+check_sign_change <- function(derivatives, target_level, check_depth = 50) {
+  # Find the index of the target level
+  target_index <- which.min(abs(derivatives$PRES_ADJUSTED - target_level))
+  
+  # Get indices to check around the target level
+  lower_index <- which.min(abs(derivatives$PRES_ADJUSTED - (target_level - check_depth)))
+  upper_index <- which.min(abs(derivatives$PRES_ADJUSTED - (target_level + check_depth)))
+  
+  # Check for sign changes in the derivative around the target level
+  sign_changes <- sign(derivatives$dVALUE[lower_index:upper_index])
+  change_detected <- any(diff(sign_changes) != 0, na.rm = TRUE)
+  
+  return(change_detected)
+}
+
+
+
+
+
     
 data_df = load_float_data(float_ids = wmo,
                               variables = c("DATA_TYPE", "PLATFORM_NUMBER", "BBP700", "BBP700_dPRES",
@@ -231,15 +262,38 @@ for (i in 1:nrow(carb_eddy.id)){
 }
 carb_eddy.id$CONSISTENT_ANOM <- const.vec
 
-# in this case it's not consistent
+
+
+
+# Create an empty list to store plots
 prof.plot <- list()
 res.plot <- list()
 list.plots <- list()
+current_eddy.l <- list()
+# Iterate over each cycle number in carb_eddy.id
 for (i in seq_along(carb_eddy.id$CYCLE_NUMBER)) {
   current_cycle <- carb_eddy.id$CYCLE_NUMBER[i]
   current_data <- A %>% filter(CYCLE_NUMBER == current_cycle)
   current_eddy <- carb_eddy.id %>% filter(CYCLE_NUMBER == current_cycle)
   
+  # Filter data for AOU and SPIC
+  data_aou <- current_data %>% filter(VAR == "AOU")
+  data_spic <- current_data %>% filter(VAR == "SPIC")
+  
+  # Calculate derivatives for AOU and SPIC
+  data_aou_deriv <- calculate_derivative(data_aou)
+  data_spic_deriv <- calculate_derivative(data_spic)
+  
+  # Check for sign change around the target level (100 meters around)
+  sign_change_detected_aou <- check_sign_change(data_aou_deriv, pres_level, check_depth = 100)
+  sign_change_detected_spic <- check_sign_change(data_spic_deriv, pres_level, check_depth = 100)
+  
+  # Add sign change detection results to current_eddy
+  current_eddy.l[[i]] <- current_eddy %>%
+    mutate(SIGN_AOU = sign_change_detected_aou,
+           SIGN_SPIC = sign_change_detected_spic)
+  
+  # Plotting profile
   prof.plot[[i]] <- current_data %>%
     ggplot(aes(x = PRES_ADJUSTED, y = VALUE)) +
     facet_grid(. ~ VAR, scales = "free") +
@@ -266,6 +320,7 @@ for (i in seq_along(carb_eddy.id$CYCLE_NUMBER)) {
     label = c("-3 sigma", "+3 sigma", "-3 sigma", "+3 sigma")
   )
   
+  # Plotting residuals
   res.plot[[i]] <- df %>%
     ggplot(aes(x = PRES_ADJUSTED, y = SCALE.RES.ROB)) +
     scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40)) +
@@ -286,11 +341,15 @@ for (i in seq_along(carb_eddy.id$CYCLE_NUMBER)) {
                            "\nLatitude: ", current_eddy$LATITUDE,
                            "\nTime: ", format(as.POSIXct(current_eddy$TIME, origin = "1970-01-01"), "%Y-%m-%d"))
   
-  combined_plot <- ggarrange(prof.plot[[i]], res.plot[[i]], common.legend = F, legend = "bottom", nrow = 2)
+  # Combine plots with annotation
+  combined_plot <- ggarrange(prof.plot[[i]], res.plot[[i]], common.legend = FALSE, legend = "bottom", nrow = 2)
   combined_plot <- annotate_figure(combined_plot, top = text_grob(annotation_text, face = "bold", size = 10))
   
   list.plots[[i]] <- combined_plot
+  
 }
+
+current_eddy.l %>% bind_rows()
 
 
 
@@ -300,4 +359,7 @@ for (i in seq_along(carb_eddy.id$CYCLE_NUMBER)) {
 # [1]  4  5 13 16 18 19 20 21 23 25 26 28 32 34 35 38 40 46 47 49 50 51 53 55 57 59
 
 
+# We should add a subdetection test to check that the first derivative changes sign : 
+
+#CYCLE_NUMBER = 77
 
