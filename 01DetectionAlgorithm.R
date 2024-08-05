@@ -11,7 +11,7 @@ for (j in seq_along(wmolist)) {
     
     wmo <- wmolist[j]
     # wmo <- 5904677
-    # cycle_number <- results %>% filter(WMO == wmo) %>% select(CYCLE_NUMBER) %>% unique() %>% as_vector()
+    # cycle_number <- results %>% filter(WMO == wmo) %>% dplyr::select(CYCLE_NUMBER) %>% unique() %>% as_vector()
     
     data_df = load_float_data(float_ids = wmo,
                               variables = c("DATA_TYPE", "PLATFORM_NUMBER", "BBP700", "BBP700_dPRES",
@@ -38,7 +38,7 @@ for (j in seq_along(wmolist)) {
     
     downscale_data_fun_wo_out <- function(df, b = 20) {
       data <- df %>%
-        select(PRES_ADJUSTED, AOU, SPIC, CYCLE_NUMBER, LONGITUDE, LATITUDE, TIME)
+        dplyr::select(PRES_ADJUSTED, AOU, SPIC, CYCLE_NUMBER, LONGITUDE, LATITUDE, TIME)
       
       bin_width <- b
       pressure_range <- range(data$PRES_ADJUSTED, na.rm = TRUE)
@@ -90,7 +90,7 @@ for (j in seq_along(wmolist)) {
     A <- df %>%
       group_by(CYCLE_NUMBER) %>%
       group_modify(~ .x %>%
-                     select(PRES_ADJUSTED, AOU, SPIC, LATITUDE, LONGITUDE, TIME) %>%
+                     dplyr::select(PRES_ADJUSTED, AOU, SPIC, LATITUDE, LONGITUDE, TIME) %>%
                      pivot_longer(!c(PRES_ADJUSTED, LATITUDE, LONGITUDE, TIME), names_to = "VAR", values_to = "VALUE") %>%
                      group_by(VAR) %>%
                      mutate(
@@ -126,7 +126,7 @@ for (j in seq_along(wmolist)) {
     
     downscale_data_fun <- function(df, b = 20, cutoff = 3.3) {
       data <- df %>%
-        select(PRES_ADJUSTED, SCALE.RES.ROB, VAR, CYCLE_NUMBER, LONGITUDE, LATITUDE,TIME) %>%
+        dplyr::select(PRES_ADJUSTED, SCALE.RES.ROB, VAR, CYCLE_NUMBER, LONGITUDE, LATITUDE,TIME) %>%
         pivot_wider(names_from = VAR, values_from = SCALE.RES.ROB)
       
       bin_width <- b
@@ -154,7 +154,7 @@ for (j in seq_along(wmolist)) {
     
     B <- output %>% bind_rows()
     
-    prop_zero <- B %>% select(AOU, SPIC, CYCLE_NUMBER, PRES_ADJUSTED,LATITUDE,LONGITUDE,TIME) %>%
+    prop_zero <- B %>% dplyr::select(AOU, SPIC, CYCLE_NUMBER, PRES_ADJUSTED,LATITUDE,LONGITUDE,TIME) %>%
       unique() %>%
       pivot_longer(cols = c("AOU", "SPIC"), names_to = "VAR", values_to = "VALUE") %>%
       group_by(CYCLE_NUMBER, VAR) %>% summarize(zero_proportion = mean(VALUE == 0, na.rm = TRUE), .groups = 'drop')
@@ -168,7 +168,7 @@ for (j in seq_along(wmolist)) {
     
     
     
-    carb_eddy.id <- B %>% filter(OUT.S == 1) %>% select(CYCLE_NUMBER, PRES_ADJUSTED,LATITUDE,LONGITUDE,TIME) %>% unique()
+    carb_eddy.id <- B %>% filter(OUT.S == 1) %>% dplyr::select(CYCLE_NUMBER, PRES_ADJUSTED,LATITUDE,LONGITUDE,TIME) %>% unique()
     
     carb_eddy.id <- carb_eddy.id %>% filter(PRES_ADJUSTED <= 700) %>% filter(PRES_ADJUSTED >= 200)
     
@@ -179,7 +179,7 @@ for (j in seq_along(wmolist)) {
     
     const.vec <- c()
     for (i in 1:nrow(carb_eddy.id)){
-      spic <- data_df %>% filter(CYCLE_NUMBER==carb_eddy.id$CYCLE_NUMBER[i]) %>% select(SPIC,PRES_ADJUSTED) %>% ungroup()
+      spic <- data_df %>% filter(CYCLE_NUMBER==carb_eddy.id$CYCLE_NUMBER[i]) %>% dplyr::select(SPIC,PRES_ADJUSTED) %>% ungroup()
       
       # The target pressure level
       target_pressure <- carb_eddy.id$PRES_ADJUSTED[[i]]
@@ -187,7 +187,7 @@ for (j in seq_along(wmolist)) {
       # Find the value of spiciness at the pressure level closest to 700
       closest_spic <- spic %>%
         slice_min(abs(PRES_ADJUSTED - target_pressure), n = 1) %>%
-        select(SPIC) %>% ungroup()
+        dplyr::select(SPIC) %>% ungroup()
       
       # If spic at outlying level is closer to surface value than the mean spic is of the surface value, anomaly is consistent
       const.vec[i] <- ifelse(abs(closest_spic-spic$SPIC[1]) < abs(mean(spic$SPIC)-spic$SPIC[1]),1,0)
@@ -220,7 +220,7 @@ for (j in seq_along(wmolist)) {
       
       df <- current_data
       df.ds <- downscale_data_fun(df, b = 40)
-      df.ds <- df.ds %>% ungroup() %>% select(AOU, SPIC, PRES_ADJUSTED) %>%
+      df.ds <- df.ds %>% ungroup() %>% dplyr::select(AOU, SPIC, PRES_ADJUSTED) %>%
         pivot_longer(cols = !PRES_ADJUSTED, names_to = "VAR", values_to = "VALUE")
       
       hline_data <- data.frame(
@@ -283,7 +283,7 @@ detected.events.list <- lapply(detected.events.list, function(x) {
 
 detected.events.df <- detected.events.list %>% bind_rows()
 
-detected.events.df %>% select(CYCLE_NUMBER,WMO) %>% unique()
+detected.events.df %>% dplyr::select(CYCLE_NUMBER,WMO) %>% unique()
 
 
 
@@ -294,8 +294,8 @@ class.df.part <- read_csv("~/Documents/GLOBARGO/data/classification_results_port
 class.df.part <- class.df.part %>%  mutate(WMO = str_replace(WMO, "_plot$", ""))
 class.df.part$CYCLE_NUMBER <- class.df.part$Cycle
 
-class.df.part %>% select(CYCLE_NUMBER,WMO)
-detected.events.df %>% select(CYCLE_NUMBER,WMO)
+class.df.part %>% dplyr::select(CYCLE_NUMBER,WMO)
+detected.events.df %>% dplyr::select(CYCLE_NUMBER,WMO)
 
 matched_rows <- class.df.part %>%
   semi_join(detected.events.df, by = c("CYCLE_NUMBER", "WMO"))
