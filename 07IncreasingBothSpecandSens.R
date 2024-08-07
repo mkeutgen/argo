@@ -80,7 +80,7 @@ mean_spic_at_min_max_levels <- function(data, target_pressure) {
   # Filter for rows within 100 units of the target pressure
   filtered_data <- data %>%
     filter(!is.na(SPIC)) %>%  # Filter out rows where SPIC is NA
-    filter(PRES_ADJUSTED >= (target_pressure - 50) & PRES_ADJUSTED <= (target_pressure + 50))  # Filter for the range
+    filter(PRES_ADJUSTED >= (target_pressure - 100) & PRES_ADJUSTED <= (target_pressure + 100))  # Filter for the range
   
   # Find the minimum and maximum pressure levels within the range
   min_pressure <- min(filtered_data$PRES_ADJUSTED, na.rm = TRUE)
@@ -374,6 +374,8 @@ for (j in seq_along(wmolist)) {
         labs(x = "Adjusted pressure (dbar)", y = "") +
         theme(legend.position = "bottom") +
         geom_vline(xintercept = current_eddy$MLD_DEPTH[1], color = "red", alpha = .3, size = 1) +
+        # This line currently displays all PRES_ADJUSTED levels where an anomaly is detected but this needs to be
+        # modified so that the green lines are only shown if the SPIKE test is passed successfully. 
         geom_vline(xintercept = current_eddy$PRES_ADJUSTED, color = "darkgreen", alpha = .3, size = 1)
       
       df <- current_data
@@ -421,8 +423,8 @@ for (j in seq_along(wmolist)) {
         dir.create(dir, recursive = TRUE)
       }
       
-      for (k in seq_along(list.plots)) {
-        cycle_number <- carb_eddy.id$CYCLE_NUMBER[k]
+      for (k in seq_along(list.plots) ) {
+        cycle_number <- eddy_dataframe$CYCLE_NUMBER[k]
         file_name <- paste0(dir, "/", wmo, "_plot_cycle_", cycle_number, ".png")
         ggsave(file_name, list.plots[[k]], width = 10, height = 10)
       }
