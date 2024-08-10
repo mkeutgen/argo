@@ -107,7 +107,7 @@ for (j in seq_along(wmolist)) {
     # wmo <- 1902455
     # wmo <- 1902593
     
-    data_df = load_float_data(float_ids = wmo,
+    data_df <- load_float_data(float_ids = wmo,
                               variables = c("DATA_TYPE", "PLATFORM_NUMBER", "BBP700", "BBP700_dPRES",
                                             "BBP700_ADJUSTED_QC", "LATITUDE", "LONGITUDE", "PROFILE_TEMP_QC",
                                             "PROFILE_DOXY_QC", "PROFILE_BBP700_QC", "PRES_QC", "PRES",
@@ -360,6 +360,9 @@ for (j in seq_along(wmolist)) {
       current_eddy <- eddy_dataframe %>% filter(CYCLE_NUMBER == current_cycle)
       pres_level <-  eddy_dataframe$PRES_ADJUSTED[i]
       
+      df <- current_data
+      df.ds <- downscale_data_fun(df, b = 40)
+      
       
       prof.plot[[i]] <- current_data %>%
         ggplot(aes(x = PRES_ADJUSTED, y = VALUE)) +
@@ -378,8 +381,6 @@ for (j in seq_along(wmolist)) {
         # modified so that the green lines are only shown if the SPIKE test is passed successfully. 
         geom_vline(xintercept = current_eddy$PRES_ADJUSTED, color = "darkgreen", alpha = .3, size = 1)
       
-      df <- current_data
-      df.ds <- downscale_data_fun(df, b = 40)
       df.ds <- df.ds %>% ungroup() %>% dplyr::select(AOU, SPIC, PRES_ADJUSTED) %>%
         pivot_longer(cols = !PRES_ADJUSTED, names_to = "VAR", values_to = "VALUE")
       
@@ -461,4 +462,10 @@ write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_sens_and_spec
 # We should add a subdetection test to check that the first derivative changes sign : 
 
 #CYCLE_NUMBER = 77
+library(readr)
+classification_results_v3 <- read_csv("/data/GLOBARGO/data/classification_results_v3.csv")
 
+category_proportions_final <- classification_results_v3 %>%
+  group_by(Category) %>%
+  summarize(Count = n()) %>%
+  mutate(Proportion = Count / sum(Count))
