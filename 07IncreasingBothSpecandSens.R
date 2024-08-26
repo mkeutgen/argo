@@ -7,6 +7,9 @@ library(ggpubr)
 library(segmented)
 # Load it last
 library(dplyr)
+library(conflicted)
+conflict_prefer("select", "dplyr")
+conflict_prefer("filter", "dplyr")
 # IDEAS : downscale the residuals, not the original data BUT 
 # BUT filter out profiles that are too monotonic, use segmentate ?
 
@@ -75,6 +78,18 @@ find_closest_to_surface <- function(data) {
     slice(1) %>%
     pull(SPIC)
 }
+
+compute_mean_spic_50m <- function(spic_df) {
+  # Filter the dataframe for PRES_ADJUSTED values less than or equal to 50
+  filtered_df <- spic_df %>%
+    filter(PRES_ADJUSTED <= 50)
+  
+  # Calculate the mean of SPIC, omitting missing values (NA)
+  mean_spic <- mean(filtered_df$SPIC, na.rm = TRUE)
+  
+  return(mean_spic)
+}
+
 
 mean_spic_at_min_max_levels <- function(data, target_pressure) {
   # Filter for rows within 100 units of the target pressure
@@ -176,7 +191,7 @@ for (j in seq_along(wmolist)) {
     }
     
     
-    mld.df <- data.frame(CYCLE_NUMBER = unique(data_df$CYCLE_NUMBER), MLD_DEPTH = mld.vec)
+     mld.df <- data.frame(CYCLE_NUMBER = unique(data_df$CYCLE_NUMBER), MLD_DEPTH = mld.vec)
     
     # In this implementation, we downscale before computing residuals :
     
@@ -286,6 +301,9 @@ for (j in seq_along(wmolist)) {
     for (i in 1:nrow(carb_eddy.id)){
       spic <- data_df %>% filter(CYCLE_NUMBER==carb_eddy.id$CYCLE_NUMBER[i]) %>% dplyr::select(SPIC,PRES_ADJUSTED) %>% ungroup()
       
+      mean_spic_surf <- compute_mean_spic_50m(spic)
+      
+      
       # The target pressure level
       target_pressure <- carb_eddy.id$PRES_ADJUSTED[[i]]
       
@@ -299,9 +317,9 @@ for (j in seq_along(wmolist)) {
       
       # If spic at outlying level is closer to surface value than the mean spic is of the surface value, anomaly is consistent
       const.vec[i] <- ifelse( 
-        abs(closest_spic- find_closest_to_surface(spic) )  < 
+        abs(closest_spic- mean_spic_surf)  < 
                                abs(mean_spic_at_min_max_levels(spic,target_pressure = target_pressure)-
-                                     find_closest_to_surface(spic) ) ,
+                                     mean_spic_surf) ,
         1,0)
     }
     
@@ -461,11 +479,4 @@ write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_sens_and_spec
 
 # We should add a subdetection test to check that the first derivative changes sign : 
 
-#CYCLE_NUMBER = 77
-library(readr)
-classification_results_v3 <- read_csv("/data/GLOBARGO/data/classification_results_v3.csv")
 
-category_proportions_final <- classification_results_v3 %>%
-  group_by(Category) %>%
-  summarize(Count = n()) %>%
-  mutate(Proportion = Count / sum(Count))

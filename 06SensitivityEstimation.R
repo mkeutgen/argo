@@ -216,7 +216,7 @@ for (j in c(1:200)) {
       
       hline_data <- data.frame(
         VAR = c("AOU", "AOU", "SPIC", "SPIC"),
-        hline = c(-3, 3, -3, 3),
+        hline = c(-2, 3, -3, 3),
         label = c("-3 sigma", "+3 sigma", "-3 sigma", "+3 sigma")
       )
       
@@ -276,13 +276,4 @@ detected.events.list <- lapply(detected.events.list, function(x) {
   return(x)
 })
 
-# Computing Algorithm's Sensitivity :
-data <- read_csv("/data/GLOBARGO/src/data/classification_results_sensitivity(4).csv")
-data
-data %>%
-  group_by(Category) %>%
-  summarize(Count = n()) %>%
-  mutate(Proportion = Count / sum(Count))
-0.0367/0.0167
-
-
+# DO Sensitivity, run algorithm 

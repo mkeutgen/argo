@@ -306,7 +306,9 @@ write_csv(matched_rows,"~/Documents/GLOBARGO/data/classification_results_portion
 
 detected.events.df <- read_csv("~/Documents/GLOBARGO/data/detected_events.csv")
 
-manual.class.df <- read_csv("~/Documents/GLOBARGO/data/classification_results_manually_classified.csv")
+# Read class v3, improved from previously : 
+
+manual.class.df <- read_csv("/data/GLOBARGO/data/classification_results_sensitivity(3).csv")
 manual.class.df <- manual.class.df %>%  mutate(WMO = str_replace(WMO, "_plot$", ""))
 manual.class.df$CYCLE_NUMBER <- manual.class.df$Cycle
 
@@ -323,14 +325,7 @@ wm_only_0_3_or_4 <- manual.class.df %>%
   summarize(unique_categories = unique(Category))
 
 # Display the result
-print(wm_only_0_or_4)
-
-
-
-
-
-
-
+print(wm_only_0_3_or_4)
 
 
 # Function to prioritize the category values
