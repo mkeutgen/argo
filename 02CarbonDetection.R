@@ -157,7 +157,7 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
       group_by(CYCLE_NUMBER) %>%
       # Apply the computations for each unique CYCLE_NUMBER
       group_modify(~ .x %>%
-                     select(PRES_ADJUSTED, AOU, SPIC, BBP700_ADJUSTED, LATITUDE, LONGITUDE, TIME) %>%
+                     dplyr::select(PRES_ADJUSTED, AOU, SPIC, LATITUDE, LONGITUDE, TIME) %>%
                      pivot_longer(!c(PRES_ADJUSTED, LATITUDE, LONGITUDE, TIME), names_to = "VAR", values_to = "VALUE") %>%
                      group_by(VAR) %>%
                      mutate(
@@ -172,27 +172,30 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
                                            }
                                          },
                                          fill = NA),
-                       ROB.RES = MA_3 - TM_11,
-                       ROB.RES.RAW = VALUE - TM_11
+                       TM_9 = rollapply(VALUE, 9,
+                                        function(x) {
+                                          x_subset <- x[x >= quantile(x, 0.2, na.rm = TRUE) & x <= quantile(x, 0.8, na.rm = TRUE)]
+                                          if (length(x_subset) > 0) {
+                                            mean(x_subset, na.rm = TRUE)
+                                          } else {
+                                            NA
+                                          }
+                                        },
+                                        fill = NA),
+                       MM_11 = rollmedian(VALUE, 11, fill = NA),
+                       ROB.RES = MA_3 - TM_9,
+                       ROB.RES.RAW = VALUE - TM_9
                      ) %>%
                      mutate(
-                       # Compute MAD and median only for non-zero residuals
-                       #MAD = mad(ROB.RES[ROB.RES != 0], na.rm = TRUE),
-                       #MEDIAN_RES = median(ROB.RES[ROB.RES != 0], na.rm = TRUE)
-                       #MAD = mad(ROB.RES.RAW, na.rm = TRUE),
-                       IQRN = IQR(ROB.RES.RAW,na.rm=T) / 1.349 ,
+                       IQRN = IQR(ROB.RES.RAW, na.rm = TRUE) / 1.349,
                        MEDIAN_RES = median(ROB.RES.RAW[ROB.RES.RAW != 0], na.rm = TRUE)
                      ) %>%
                      mutate(
-                       #SCALE.RES.ROB = ifelse(ROB.RES == 0, 0,
-                       #                        (ROB.RES - MEDIAN_RES) / MAD),
-                       # Using Raw values
                        SCALE.RES.ROB = ifelse(ROB.RES.RAW == 0, 0,
                                               (ROB.RES.RAW - MEDIAN_RES) / IQRN)
                      )
       ) %>%
-      ungroup()  # To remove the grouping
-    
+      ungroup()
     # Check the result
     
     
@@ -354,7 +357,8 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
       annotation_text <- paste("Cycle Number: ", current_cycle,
                                "\nFloat ID (WMO): ", wmo,
                                "\nLongitude: ", current_eddy$LONGITUDE,
-                               "\nLatitude: ", current_eddy$LATITUDE)
+                               "\nLatitude: ", current_eddy$LATITUDE,
+                               "\nTime: ", format(as.POSIXct(current_eddy$TIME, origin = "1970-01-01"), "%Y-%m-%d"))
       
       combined_plot <- annotate_figure(combined_plot, 
                                        top = text_grob(annotation_text, face = "bold", size = 10))

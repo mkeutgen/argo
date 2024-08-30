@@ -437,7 +437,7 @@ for (j in seq_along(wmolist)) {
     }
     
     if (length(list.plots) > 0) {
-      dir <- paste0("/data/GLOBARGO/figures/EddySubductionFiguresSensSpecIncr/", wmo)
+      dir <- paste0("/data/GLOBARGO/figures/EddySubductionFiguresSensSpecIncrFigCorrectedTM9/", wmo)
       if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE)
       }
