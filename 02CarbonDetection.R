@@ -76,7 +76,7 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
                                  ,"PSAL_ADJUSTED_QC"
                                  ,"TEMP"                            
                                  ,"TEMP_QC"                        
-                                 ,"TEMP_dPRES"
+                                 ,"TEMP_dPRES"names(Data[[floats[f]]]
                                  ,"TEMP_ADJUSTED"                  
                                  ,"TEMP_ADJUSTED_QC"
                                  ,"TEMP_ADJUSTED_ERROR"), # specify variables,
