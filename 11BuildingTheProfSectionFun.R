@@ -1,6 +1,10 @@
 # Testing with Llort Float
 # TWO FUNCTIONS, ONE TO BUILD THE DATAFRAME WITH SPIC AOU AND BBP
 # ONE TO PLOT
+library(akima)
+library(ggplot2)
+library(ggpubr)
+
 
 WMO <- 5904677
 
@@ -57,7 +61,7 @@ downscale_data_fun_wo_out <- function(df,b=20) {
 }
 
 
-interpol_df_fun <- function(WMO){
+gen_df_fun <- function(WMO){
     
     
     # make sure Setting is initialized
@@ -66,22 +70,20 @@ interpol_df_fun <- function(WMO){
     }
     
     # download Sprof files if necessary
-    good_float_ids = download_multi_floats(float_ids)
+    good_float_ids = download_multi_floats(WMO)
     
     loaded = load_float_data(good_float_ids,variables = NULL, float_profs)
-    Data = loaded$Data
+    Datai = loaded$Data[[1]]
     Mdata = loaded$Mdata
 
     
-    
-    
     # vertical interpolation to depths with regular intervals
-    
-      prs_res = 20
-      
-      Datai = depth_interp(Data[[floats[f]]], qc_flags, calc_dens=calc_dens, 
-                           calc_mld_temp=(plot_mld==1), calc_mld_dens=(plot_mld==2),
-                           prs_res=prs_res)
+    #
+    #  prs_res = 2
+    #  
+    #  Datai = depth_interp(Data[[floats[f]]], qc_flags, calc_dens=calc_dens, 
+    #                       calc_mld_temp=(plot_mld==1), calc_mld_dens=(plot_mld==2),
+    #                       prs_res=prs_res)
       
     # computation of spiciness (SPIC) and apparent oxygen utilization (AOU)
     # based on adjusted variables if available 
@@ -199,45 +201,6 @@ interpol_df_fun <- function(WMO){
       df <- downscaled_ds_list %>% bind_rows()
       
       
-      
-
-      
-      # Create min/max parameters to use the geom_rect() function that can plot
-      # rectangles with variable width/height
-      
-      if ("PRES_ADJUSTED" %in% names(Datai) ) {
-        df$ymin = df$PRES_ADJUSTED - prs_res/2
-        df$ymax = df$PRES_ADJUSTED + prs_res/2
-      } else {
-        df$ymin = df$PRES - prs_res/2
-        df$ymax = df$PRES + prs_res/2
-      }
-      # Not NA time
-      nna = which(!is.na(Datai$TIME[1,]))
-      
-      # Number of not na
-      nc = length(nna)
-      
-      xvec = as.POSIXct(Datai$TIME[1,nna], tz="UTC")
-      xmin = as.POSIXct(rep(NA, nc), tz="UTC")
-      xmax = as.POSIXct(rep(NA, nc), tz="UTC")
-      
-      xmin[2:(nc-1)] = xvec[2:(nc-1)] - ( xvec[2:(nc-1)] - xvec[1:(nc-2)] ) / 2
-      xmax[2:(nc-1)] = xvec[2:(nc-1)] + ( xvec[3:nc] - xvec[2:(nc-1)] ) / 2
-      
-      xmin[1] = xvec[1] - ( xvec[2] - xvec[1] ) / 2
-      xmax[nc] = xvec[nc] + ( xvec[nc] - xvec[nc-1] ) / 2
-      xmin[nc] = xmax[nc-1]
-      xmax[1] = xmin[2]
-      
-      full_xmin = as.POSIXct(rep(NA, ncol(Datai$TIME)), tz="UTC")
-      full_xmax = as.POSIXct(rep(NA, ncol(Datai$TIME)), tz="UTC")
-      full_xmin[nna] = xmin
-      full_xmax[nna] = xmax
-      # Debugging : 198283 = nrow(Datai$TIME is 851) and full_xmin is 233 where does those number come from ?
-      #data_df <- load_float_data(float_ids = 5904183,format="dataframe")
-      # data_df$TIME %>% unique() %>% length()
-      
       # So 233 is unique number of dates in that float
       # Where does 851 comes from ? format="dataframe"
       list_of_tibbles <- df  %>%
@@ -266,140 +229,123 @@ interpol_df_fun <- function(WMO){
       
 }
 
-
-  
-df.25 <- df %>% filter(CYCLE_NUMBER == 25)
-df.25 %>% ggplot(aes(x=PRES_ADJUSTED,y=BBP700_ADJUSTED))+geom_point()+geom_line()+
-  scale_x_reverse()+coord_flip()
-
-  variables <- c("SPIC")
-  #  if(is.null(Data[[floats[f]]][[variables[v] ]])){ # Check if the float has variable
-  #    print(paste("No",variables[v],"available for float",floats[f]))
-  #    next
-  #  }
-
-  
-   # For 5904677 : 
-  # 5 September to 25 November 2016
-  
-
-df$TIME %>% str()  
-  
-  
-plotting_fun <- function(df)  
-  
-start_date <- as.POSIXct("2016-01-01")
-end_date <- as.POSIXct("2016-12-31")
-
-# Filter the dataframe for the specified date range
-df_filtered <- df %>%
-  filter(TIME >= start_date & TIME <= end_date)
+df <- gen_df_fun(WMO=5904105)
 
 
-  if ("PRES_ADJUSTED" %in%   colnames(df)
- ) {
-    g1 = ggplot(df.wf, aes(x=TIME, y=PRES_ADJUSTED)) + facet_wrap(. ~ name)
-  } else {
-    g1 = ggplot(df.wf, aes(x=TIME, y=PRES)) + facet_wrap(. ~ name,scales = "free")
-  }
+# Function to process data, interpolate, and plot results
+generate_plots <- function(df, start_date, end_date, anomalies_det) {
+  # Generate the dataframe for the specified WMO
   
+  # Filter the dataframe for the specified date range
+  df_filtered <- df %>%
+    filter(TIME >= as.POSIXct(start_date) & TIME <= as.POSIXct(end_date))
+  
+  # Step 1: Remove rows with missing values in PRES_ADJUSTED, TIME, AOU, SPIC, or BBP700_ADJUSTED
+  df_filtered_clean <- df_filtered %>%
+    filter(!is.na(PRES_ADJUSTED) & !is.na(AOU) & !is.na(SPIC) & !is.na(TIME))
+  
+  # Step 2: Convert TIME to numeric based on the number of days since the earliest time in the dataset
+  reference_time <- min(df_filtered_clean$TIME)
+  
+  df_filtered_clean$TIME_numeric <- as.numeric(difftime(df_filtered_clean$TIME, reference_time, units = "days"))
+  
+  # Step 3: Perform 2D interpolation using akima::interp for AOU, SPIC, and BBP700_ADJUSTED
+  
+  # Interpolate AOU
+  interp_result_AOU <- with(df_filtered_clean, interp(
+    x = TIME_numeric,          
+    y = PRES_ADJUSTED,         
+    z = AOU,                   
+    xo = seq(min(TIME_numeric), max(TIME_numeric), length = 500),  
+    yo = seq(min(PRES_ADJUSTED), max(PRES_ADJUSTED), length = 500)
+  ))
+  
+  # Interpolate SPIC
+  interp_result_SPIC <- with(df_filtered_clean, interp(
+    x = TIME_numeric,          
+    y = PRES_ADJUSTED,         
+    z = SPIC,                  
+    xo = seq(min(TIME_numeric), max(TIME_numeric), length = 500),  
+    yo = seq(min(PRES_ADJUSTED), max(PRES_ADJUSTED), length = 500)
+  ))
+  
+  # Interpolate BBP700_ADJUSTED
+  interp_result_BBP700 <- with(df_filtered_clean, interp(
+    x = TIME_numeric,          
+    y = PRES_ADJUSTED,         
+    z = BBP700_ADJUSTED,       
+    xo = seq(min(TIME_numeric), max(TIME_numeric), length = 500),  
+    yo = seq(min(PRES_ADJUSTED), max(PRES_ADJUSTED), length = 500)
+  ))
+  
+  # Step 4: Convert interpolated results back to POSIXct and combine them into a single dataframe
+  interp_df <- data.frame(
+    TIME = as.POSIXct(reference_time + interp_result_AOU$x * 24 * 60 * 60),  
+    PRES_ADJUSTED = rep(interp_result_AOU$y, each = length(interp_result_AOU$x)),
+    AOU = as.vector(interp_result_AOU$z),
+    SPIC = as.vector(interp_result_SPIC$z),
+    BBP700_ADJUSTED = as.vector(interp_result_BBP700$z)
+  )
+  
+  # Step 5: Plotting the results
+  
+  # Plot AOU
+  plot_AOU <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = AOU)) +
+    geom_tile() +
+    scale_fill_viridis_c(name = "AOU (µmol/kg)") +
+    theme_bw() +
+    ggtitle("Apparent Oxygen Utilization (Interpolated)") + 
+    scale_y_reverse(limits = c(max(interp_df$PRES_ADJUSTED), 0)) +
+    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
+  
+  # Plot SPIC
+  plot_SPIC <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = SPIC)) +
+    geom_tile() +
+    scale_fill_viridis_c(name = "Spiciness (kg/m³)") +
+    theme_bw() +
+    ggtitle("Spiciness (Interpolated)") + 
+    scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0))+
+    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
+  
+  # Plot BBP700_ADJUSTED
+  plot_BBP700 <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = BBP700_ADJUSTED)) +
+    geom_tile() +
+    scale_fill_viridis_c(name = "BBP700 (m⁻¹)") +
+    theme_bw() +
+    ggtitle("BBP700_ADJUSTED (Interpolated)") + 
+    scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0))+
+    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
+  
+  # Arrange the three plots together
+  combined_plot <- ggarrange(
+    plot_AOU, plot_SPIC, plot_BBP700, 
+    ncol = 1,
+    align = "v"
+  )
+  
+  return(combined_plot)
+}
 
+# Example usage:
+ combined_plot <- generate_plots(WMO = 5904677, start_date = "2016-08-01", end_date = "2016-12-31", anomalies_det = anomalies_det)
 
-  # Create individual plots for each variable
-  plot_AOU <- ggplot(df_filtered, aes(x=TIME, y=PRES_ADJUSTED)) +
-    geom_rect(aes(fill=AOU, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)) +
-    scale_fill_viridis_c() + theme_bw() + ggtitle("AOU")+ 
-    scale_y_reverse(limits = c(max_depth, 0))+
-    geom_point(data = anomalies_det, aes(x=TIME, y=PRES_ADJUSTED), color="red", size=3)
-  
-  plot_SPIC <- ggplot(df_filtered, aes(x=TIME, y=PRES_ADJUSTED)) +
-    geom_rect(aes(fill=SPIC, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)) +
-    scale_fill_viridis_c() + theme_bw() + ggtitle("SPIC") +
-    scale_y_reverse(limits = c(max_depth, 0))+
-    geom_point(data = anomalies_det, aes(x=TIME, y=PRES_ADJUSTED), color="red", size=3)
-  
-  plot_BBP700_ADJUSTED <- ggplot(df_filtered, aes(x=TIME, y=PRES_ADJUSTED)) +
-    geom_rect(aes(fill=BBP700_ADJUSTED, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)) +
-    scale_fill_viridis_c() + theme_bw() + ggtitle("BBP700_ADJUSTED") +
-    scale_y_reverse(limits = c(max_depth, 0))+
-    geom_point(data = anomalies_det, aes(x=TIME, y=PRES_ADJUSTED), color="red", size=3)
-  
-  
-  plot_BBP700 <- ggplot(df, aes(x=TIME, y=PRES_ADJUSTED)) +
-    geom_rect(aes(fill=BBP700, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax)) +
-    scale_fill_viridis_c() + theme_bw() + ggtitle("BBP700")+
-    geom_point(data = anomalies_det, aes(x=TIME, y=PRES_ADJUSTED), color="red", size=3)
-  
-  
-  # Use ggarrange to combine the plots
-  combined_plots <- ggarrange(plot_AOU, plot_SPIC, plot_BBP700_ADJUSTED, 
-                              ncol = 2, nrow = 2, common.legend = FALSE, legend = "right")
+ 
+ df <- gen_df_fun(5904105)
+ 
+ df %>% filter(CYCLE_NUMBER == 23)
+ # 2016-10-05
+ df$TIME %>% unique()
 
+ anomalies_det <- det_event_cat1 %>% filter(WMO == 5904105) %>% filter(CYCLE_NUMBER %in% c(23)) %>% select(PRES_ADJUSTED,TIME)
+ anomalies_det$TIME <- as.POSIXct(anomalies_det$TIME)
+ 
+  
+ p <- generate_plots(df,start_date = "2016-08-26",end_date = "2016-11-15",)
+ 
+ print(combined_plot)
+ 
+df <- gen_df_fun(5906312)
+anomalies_det <- det_event_cat1 %>% filter(WMO == 5906312) %>% select(PRES_ADJUSTED,TIME,CYCLE_NUMBER) %>% filter(CYCLE_NUMBER == 32)
+anomalies_det$TIME <- as.POSIXct(anomalies_det$TIME)
 
-  
-  name_units = get_var_name_units(variables[v])
-  long_name = name_units$long_name
-  units = name_units$units
-  
-  if (obs == "on") {
-    index = which(!is.na(Data[[floats[f]]][[variables[v]]]))
-    g1 = g1 + geom_point(aes(x = x, y = y),
-                         data = data.frame(x = as.POSIXct(Data[[floats[f]]]$TIME[index], tz="UTC"),
-                                           y = as.vector(Data[[floats[f]]]$PRES[index])),
-                         size=0.1, alpha=0.2
-    )
-  }
-  # Plot the mixed layer
-  if (plot_mld == 1) {
-    g1 = g1 + geom_line(aes(x = x, y = y),
-                        data = data.frame(x = as.POSIXct(Datai$TIME[1,], tz="UTC"),
-                                          y = as.vector(Datai$MLD_TEMP)),
-                        size=0.4,color="red",alpha=.5
-    )
-  } else if (plot_mld == 2 & "MLD_DENS" %in% names(Datai)) {
-    # some old core floats don't have PSAL and therefore
-    # density cannot be computed
-    g1 = g1 + geom_line(aes(x = x, y = y),
-                        data = data.frame(x = as.POSIXct(Datai$TIME[1,], tz="UTC"),
-                                          y = as.vector(Datai$MLD_DENS)),
-                        size=1
-    )
-  }
-  # If you want to plot isopycnals
-  if ( plot_isopyc ) {
-    if ("DENS_ADJUSTED" %in% names(Datai)) {
-      g1 = g1 + geom_contour(aes(z = DENS_ADJUSTED), color="red") +
-        geom_label_contour(aes(z = DENS_ADJUSTED))
-    } else {
-      g1 = g1 + geom_contour(aes(z = DENS), color="red") +
-        geom_label_contour(aes(z = DENS))
-    }
-  }
-  # Reverse y axis so that top of the ocean is on top of the plot
-  if ( !is.null(max_depth) ) {
-    g1 = g1 + scale_y_reverse(limits = c(max_depth, 0))
-  } else {
-    g1 = g1 + scale_y_reverse()
-  }
-  
-  g1 = g1 +
-    labs(title = paste0("Float ", Mdata[[float_ids[f]]]$WMO_NUMBER,": ",
-                        long_name, title_add),
-         x = "Time",
-         y = "Pressure (dbar)",face = 'bold',family = "serif",
-         fill = units)
-  g1= g1+theme (axis.title.y = element_text(size=16,colour = "black",face = "bold",family = "serif") ) 
-  g1= g1+theme (axis.title.x = element_text(size=16,colour = "black",face = "bold",family = "serif") ) 
-  g1= g1+theme (axis.text.y = element_text(size=16,colour = "black",face = "bold",family = "serif") ) 
-  g1= g1+theme (axis.text.x = element_text(size=16,colour = "black",face = "bold",family = "serif") )
-  g1=g1+theme(legend.text = element_text(size = 16,face = 'bold',family = "serif"),
-              legend.title  = element_text(size = 16,face = 'bold',family = "serif"),
-              legend.key.width=unit(1,'cm'),
-              legend.key.height=unit(1,'cm'))#
-  g1=g1+theme(plot.title = element_text(size = 16, face = "bold",family = "serif"))
-  
-  
-  x11()
-  plot(g1)
-
-
+p <- generate_plots(df,start_date = "2023-09-01",end_date = "2023-11-28",anomalies_det = anomalies_det)
