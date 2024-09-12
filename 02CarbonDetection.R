@@ -22,11 +22,11 @@ wmo_cat2 <- cat2_events$WMO %>% unique()
 
 detected.events.list <- list()
 # j, indicator for the WMO
-for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
+for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
   try({
     # Start with first WMO of the random sample
-    #wmo <- wmo_cat1[j]
-    wmo <- wmo_cat2[j]
+    wmo <- wmo_cat1[j]
+    #wmo <- wmo_cat2[j]
     #wmo <- 5904470
     #wmo <-  5905073  # with soooo much zero residuals, for instance prof 65 has sooo tiny little bumps and it'd
     # be nice if there was a way for the method not to detect it... However 29 and 40 are legit AF
@@ -39,8 +39,8 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
     #wmo <- 6903024 # Problem of very small residuals, blowing up residuals
     #wmo <- 5904179
     #wmo <- 1902332
-    #cycle_number <- cat1_events %>% filter(WMO== wmo) %>% select(Cycle) %>% unique() %>% as_vector()
-    cycle_number <- cat2_events %>% filter(WMO== wmo) %>% select(Cycle) %>%  unique() %>% as_vector()
+    cycle_number <- cat1_events %>% filter(WMO== wmo) %>% select(Cycle) %>% unique() %>% as_vector()
+    #cycle_number <- cat2_events %>% filter(WMO== wmo) %>% select(Cycle) %>%  unique() %>% as_vector()
     
     
     # LOT OF ANOMALIES IFF
@@ -76,12 +76,14 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
                                  ,"PSAL_ADJUSTED_QC"
                                  ,"TEMP"                            
                                  ,"TEMP_QC"                        
-                                 ,"TEMP_dPRES"names(Data[[floats[f]]]
+                                 ,"TEMP_dPRES"
                                  ,"TEMP_ADJUSTED"                  
                                  ,"TEMP_ADJUSTED_QC"
                                  ,"TEMP_ADJUSTED_ERROR"), # specify variables,
                                format="dataframe" # specify format;  
     )
+    
+    
     # Select only the cycle number which are anomalous
     data_df <- data_df %>% filter(data_df$CYCLE_NUMBER %in% cycle_number)
     
@@ -206,7 +208,7 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
     
     
     
-    downscale_data_fun <- function(df,b=20,cutoff=3.3) {
+    downscale_data_fun <- function(df,b=20,cutoff=2) {
       # Select and pivot data
       data <- df %>%
         select(PRES_ADJUSTED, SCALE.RES.ROB, VAR,CYCLE_NUMBER,LONGITUDE,LATITUDE,TIME) %>%
@@ -316,8 +318,8 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
       
       hline_data <- data.frame(
         VAR = c("AOU", "AOU", "SPIC", "SPIC", "BBP700_ADJUSTED", "BBP700_ADJUSTED"),
-        hline = c(-3, 3, -3, 3, -1, 1),
-        label = c("-3 sigma", "+3 sigma", "-3 sigma", "+3 sigma", "-1 sigma", "+1 sigma")
+        hline = c(-2, 2, -2, 2, -1, 1),
+        label = c("-2 sigma", "+2 sigma", "-2 sigma", "+2 sigma", "-1 sigma", "+1 sigma")
       )
       
       res.plot[[i]] <- df %>%
@@ -330,8 +332,8 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
         labs(x = "Adjusted pressure (dbar)", y = "") +
         geom_hline(data = hline_data, aes(yintercept = hline, color = label), inherit.aes = TRUE) +
         scale_color_manual(name = "Threshold", values = c(
-          "-3 sigma" = "red",
-          "+3 sigma" = "red",
+          "-2 sigma" = "red",
+          "+2 sigma" = "red",
           "-1 sigma" = "blue",
           "+1 sigma" = "blue"
         )) + theme(legend.position = "bottom") +
@@ -372,7 +374,7 @@ for (j in seq_along(wmo_cat2) ) {  #seq_along(wmo_cat1)
     # Check if list.plots is not empty
     if (length(list.plots) > 0) {
       # Create directory if it doesn't exist
-      dir <- paste0("/data/GLOBARGO/figures/CarbonFiguresCat2/", wmo)
+      dir <- paste0("/data/GLOBARGO/figures/CarbonFiguresCat1/", wmo)
       if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE)
       }
@@ -402,9 +404,9 @@ detected.events.list <- lapply(detected.events.list, function(x) {
 detected.events.df <- detected.events.list %>% bind_rows()
 detected.events.df 
 
-#write_csv(detected.events.df,"/data/GLOBARGO/data/detected_events_unique_with_carbon_cat1.csv")
+write_csv(detected.events.df,"/data/GLOBARGO/data/detected_events_unique_with_carbon_cat1.csv")
 
-write_csv(detected.events.df,"/data/GLOBARGO/data/detected_events_unique_with_carbon_cat2.csv")
+#write_csv(detected.events.df,"/data/GLOBARGO/data/detected_events_unique_with_carbon_cat2.csv")
 
 #cat1_df <- read_csv("~/Documents/ARGO/data/detected_events_unique_with_carbon_cat1.csv")
 cat1_df$OUT.T %>% sum()

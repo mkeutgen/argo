@@ -1,11 +1,7 @@
 # Testing with Llort Float
 # TWO FUNCTIONS, ONE TO BUILD THE DATAFRAME WITH SPIC AOU AND BBP
 # ONE TO PLOT
-library(akima)
-library(ggplot2)
-library(ggpubr)
-
-
+                                      
 WMO <- 5904677
 
 
@@ -35,7 +31,9 @@ max_depth <- 1000
 downscale_data_fun_wo_out <- function(df,b=20) {
   # Select and pivot data
   data <- df %>%
-    select(PRES_ADJUSTED, AOU,BBP700_ADJUSTED, SPIC,CYCLE_NUMBER,LONGITUDE,LATITUDE,TIME,BBP700_ADJUSTED)
+    select(PRES_ADJUSTED, AOU,BBP700_ADJUSTED,
+           SPIC,CYCLE_NUMBER,LONGITUDE,LATITUDE,TIME,
+           BBP700_ADJUSTED)
   
   # Determine bin edges
   bin_width <- b
@@ -72,8 +70,17 @@ gen_df_fun <- function(WMO){
   # download Sprof files if necessary
   good_float_ids = download_multi_floats(WMO)
   
-  loaded = load_float_data(good_float_ids,variables = NULL, float_profs)
-  Datai = loaded$Data[[1]]
+  loaded = load_float_data(good_float_ids,variables = NULL)
+  Data <- loaded$Data
+  Data <- calc_mld(Data,calc_mld_dens = 1)
+  
+  Datai = Data[[1]]
+  
+  mld.data <- data.frame(TIME = as.POSIXct(Datai$TIME[1,], tz="UTC"),
+                         MLD = as.vector(Datai$MLD_DENS))
+  
+  
+  
   Mdata = loaded$Mdata
   
   
@@ -183,7 +190,7 @@ gen_df_fun <- function(WMO){
   }
   
   df = data.frame(df)
-  
+
   # Downscaling AOU SPIC and BBP700 to uniform 20 meters vertical res 
   list_of_tibbles <- df  %>%
     group_by(CYCLE_NUMBER) %>%
@@ -198,158 +205,61 @@ gen_df_fun <- function(WMO){
   
   downscaled_ds_list <- lapply(list_of_tibbles,downscale_data_fun_wo_out)
   
+  
+
+  
   df <- downscaled_ds_list %>% bind_rows()
   
   
   # So 233 is unique number of dates in that float
   # Where does 851 comes from ? format="dataframe"
-  list_of_tibbles <- df  %>%
-    group_by(TIME) %>%
-    group_split()
-  list.df <- list()
-  
-  for (i in seq_along(list_of_tibbles)) {
-    tibble_i <- list_of_tibbles[[i]]
-    #tibble_i$BBP700_ADJUSTED <- rollmedian(tibble_i$BBP700_ADJUSTED, k = 3, fill = NA)
-    # Assign xmin and xmax to each tibble
-    tibble_i$xmin <- rep(full_xmin[i], nrow(tibble_i))
-    tibble_i$xmax <- rep(full_xmax[i], nrow(tibble_i))
-    
-    # Replace the tibble in the list with the modified one
-    list.df[[i]] <- tibble_i
-  }
-  
+#  list_of_tibbles <- df  %>%
+#    group_by(TIME) %>%
+#    group_split()
+#
+#  for (i in seq_along(list_of_tibbles)) {
+#    tibble_i <- list_of_tibbles[[i]]
+#    #tibble_i$BBP700_ADJUSTED <- rollmedian(tibble_i$BBP700_ADJUSTED, k = 3, fill = NA)
+#    # Assign xmin and xmax to each tibble
+#    tibble_i$xmin <- rep(full_xmin[i], nrow(tibble_i))
+#    tibble_i$xmax <- rep(full_xmax[i], nrow(tibble_i))
+#    
+#    # Replace the tibble in the list with the modified one
+#    list.df[[i]] <- tibble_i
+#  }
   
   
-  df <- list.df %>% bind_rows()
+  
+#  df <- list.df %>% bind_rows()
   
   ### END OF DATAFRAME GEN
   
-  return(df)
+  output <- list(df,mld.data)
+  
+  return(output)
   
 }
 
-df <- gen_df_fun(WMO=5904105)
+o <- gen_df_fun(WMO=6901767)
 
+df <- o[[1]]
+mld.df <- o[[2]]
 
 # Function to process data, interpolate, and plot results
-generate_plots <- function(df,wmo, start_date, end_date, cycle_number,logbbp = FALSE) {
-  # Generate the dataframe for the specified WMO
-  
-  anomalies_det <- det_event_cat1 %>% filter(WMO == wmo) %>% filter(CYCLE_NUMBER %in% cycle_number) %>% select(PRES_ADJUSTED,TIME)
-  anomalies_det$TIME <- as.POSIXct(anomalies_det$TIME)
-  
-  
-  # Filter the dataframe for the specified date range
-  df_filtered <- df %>%
-    filter(TIME >= as.POSIXct(start_date) & TIME <= as.POSIXct(end_date))
-  
-  # Step 1: Remove rows with missing values in PRES_ADJUSTED, TIME, AOU, SPIC, or BBP700_ADJUSTED
-  df_filtered_clean <- df_filtered %>%
-    filter(!is.na(PRES_ADJUSTED) & !is.na(AOU) & !is.na(SPIC) & !is.na(TIME))
-  
-  # Step 2: Convert TIME to numeric based on the number of days since the earliest time in the dataset
-  reference_time <- min(df_filtered_clean$TIME)
-  
-  df_filtered_clean$TIME_numeric <- as.numeric(difftime(df_filtered_clean$TIME, reference_time, units = "days"))
-  
-  # Step 3: Perform 2D interpolation using akima::interp for AOU, SPIC, and BBP700_ADJUSTED
-  
-  # Interpolate AOU
-  interp_result_AOU <- with(df_filtered_clean, interp(
-    x = TIME_numeric,          
-    y = PRES_ADJUSTED,         
-    z = AOU,                   
-    xo = seq(min(TIME_numeric), max(TIME_numeric), length = 200),  
-    yo = seq(min(PRES_ADJUSTED), max(PRES_ADJUSTED), length = 200)
-  ))
-  
-  # Interpolate SPIC
-  interp_result_SPIC <- with(df_filtered_clean, interp(
-    x = TIME_numeric,          
-    y = PRES_ADJUSTED,         
-    z = SPIC,                  
-    xo = seq(min(TIME_numeric), max(TIME_numeric), length = 200),  
-    yo = seq(min(PRES_ADJUSTED), max(PRES_ADJUSTED), length = 200)
-  ))
-  
-  # Interpolate BBP700_ADJUSTED
-  interp_result_BBP700 <- with(df_filtered_clean, interp(
-    x = TIME_numeric,          
-    y = PRES_ADJUSTED,         
-    z = BBP700_ADJUSTED,       
-    xo = seq(min(TIME_numeric), max(TIME_numeric), length = 200),  
-    yo = seq(min(PRES_ADJUSTED), max(PRES_ADJUSTED), length = 200)
-  ))
-  
-  # Step 4: Convert interpolated results back to POSIXct and combine them into a single dataframe
-  interp_df <- data.frame(
-    TIME = as.POSIXct(reference_time + interp_result_AOU$x * 24 * 60 * 60),  
-    PRES_ADJUSTED = rep(interp_result_AOU$y, each = length(interp_result_AOU$x)),
-    AOU = as.vector(interp_result_AOU$z),
-    SPIC = as.vector(interp_result_SPIC$z),
-    BBP700_ADJUSTED = as.vector(interp_result_BBP700$z)
-  )
-  
-  # Step 5: Plotting the results
-  
-  # Plot AOU
-  plot_AOU <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = AOU)) +
-    geom_tile() +
-    scale_fill_viridis_c(name = "AOU (µmol/kg)") +
-    theme_bw() +
-    ggtitle("Apparent Oxygen Utilization ( Linearly Interpolated)") + 
-    scale_y_reverse(limits = c(max(interp_df$PRES_ADJUSTED), 0)) +
-    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
-  
-  # Plot SPIC
-  plot_SPIC <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = SPIC)) +
-    geom_tile() +
-    scale_fill_viridis_c(name = "Spiciness (kg/m³)") +
-    theme_bw() +
-    ggtitle("Spiciness (Linearly Interpolated)") + 
-    scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0))+
-    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
-if (logbbp == FALSE){  
-      # Plot BBP700_ADJUSTED not log transformed
-      plot_BBP700 <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = BBP700_ADJUSTED)) +
-        geom_tile() +
-        scale_fill_viridis_c(name = "BBP700 (m⁻¹)") +
-        theme_bw() +
-        ggtitle("BBP700_ADJUSTED (Linearly Interpolated)") + 
-        scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 50))+
-        geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
-      
-    } else{  
-      
-      plot_BBP700 <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = log10(BBP700_ADJUSTED + 1))) +  # Log transformation
-        geom_tile() +
-        scale_fill_viridis_c(
-          name = "log10(BBP700 + 1)",  
-          limits = c(min(log10(interp_df$BBP700_ADJUSTED + 1), na.rm = TRUE), max(log10(interp_df$BBP700_ADJUSTED + 1), na.rm = TRUE)),  
-          breaks = pretty(log10(interp_df$BBP700_ADJUSTED + 1), n = 5)
-        ) +
-        theme_bw() +
-        ggtitle("BBP700_ADJUSTED (Log-Transformed, Interpolated)") + 
-        scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
-        geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
-      
-    }  
-  # Arrange the three plots together
-  combined_plot <- ggarrange(
-    plot_AOU, plot_SPIC, plot_BBP700, 
-    ncol = 1,
-    align = "v"
-  )
-  
-  return(combined_plot)
-}
 
-generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp = FALSE) {
+generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FALSE) {
+
+  # Calling the generate df function
+  o <- gen_df_fun(wmo)
+  df <- o[[1]]
+  mld.df <- o[[2]]
+  
+  
   anomalies_det <- det_event_cat1 %>% 
     filter(WMO == wmo) %>% 
     filter(CYCLE_NUMBER %in% cycle_number) %>% 
     select(PRES_ADJUSTED, TIME)
+  
   anomalies_det$TIME <- as.POSIXct(anomalies_det$TIME)
   
   df_filtered <- df %>%
@@ -359,6 +269,7 @@ generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp =
     filter(!is.na(PRES_ADJUSTED) & !is.na(AOU) & !is.na(SPIC) & !is.na(TIME))
   
   reference_time <- min(df_filtered_clean$TIME)
+  
   df_filtered_clean$TIME_numeric <- as.numeric(difftime(df_filtered_clean$TIME, reference_time, units = "days"))
   
   interp_result_AOU <- with(df_filtered_clean, interp(
@@ -396,6 +307,10 @@ generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp =
   # Extract unique time breaks
   time_breaks <- df_filtered_clean$TIME %>% unique()
   
+  mld.df_filtered <-  mld.df %>%
+    filter(TIME >= as.POSIXct(start_date) & TIME <= as.POSIXct(end_date))
+  
+  
   plot_AOU <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = AOU)) +
     geom_tile() +
     scale_fill_viridis_c(name = "AOU (µmol/kg)") +
@@ -403,7 +318,10 @@ generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp =
     ggtitle("Apparent Oxygen Utilization (Linearly Interpolated)") + 
     scale_y_reverse(limits = c(max(interp_df$PRES_ADJUSTED), 0)) +
     scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
-    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
+    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED),
+               color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)+
+    geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),inherit.aes = FALSE)
+  
   
   plot_SPIC <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = SPIC)) +
     geom_tile() +
@@ -412,7 +330,10 @@ generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp =
     ggtitle("Spiciness (Linearly Interpolated)") + 
     scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
     scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
-    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
+    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 3, 
+               alpha = 0.5, inherit.aes = FALSE)+
+    geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),inherit.aes = FALSE)
+  
   
   if (logbbp == FALSE) {
     plot_BBP700 <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = BBP700_ADJUSTED)) +
@@ -420,9 +341,15 @@ generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp =
       scale_fill_viridis_c(name = "BBP700 (m⁻¹)") +
       theme_bw() +
       ggtitle("BBP700_ADJUSTED (Linearly Interpolated)") + 
-      scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 50)) +
+      scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
       scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
-      geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
+      geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red",
+                 size = 3, alpha = 0.5, inherit.aes = FALSE)+
+      geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),
+                inherit.aes = FALSE)+
+      geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),inherit.aes = FALSE)
+    
+    
   } else {
     plot_BBP700 <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = log10(BBP700_ADJUSTED + 1))) +
       geom_tile() +
@@ -431,7 +358,10 @@ generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp =
       ggtitle("BBP700_ADJUSTED (Log-Transformed, Interpolated)") + 
       scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
       scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
-      geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 1, alpha = 0.5, inherit.aes = FALSE)
+      geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED),
+                 color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)+
+      geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),inherit.aes = FALSE)
+    
   }
   
   combined_plot <- ggarrange(
@@ -444,9 +374,13 @@ generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp =
 }
 
 # Example usage:
-df_5904677 <- gen_df_fun(5904677)
+output_5904677 <- gen_df_fun(5904677)
 
-combined_plot_5904677 <- generate_plots(df_5904677,wmo = 5904677, start_date = "2016-09-01", end_date = "2016-12-31", cycle_number = c(25,27) )
+df_5904677 <- output_5904677[[1]]
+df_5904677_mld <- output_5904677[[2]]
+
+combined_plot_5904677 <- generate_plots(wmo = 5904677, start_date = "2016-09-01",
+                                        end_date = "2016-12-31", cycle_number = c(25,27) )
 
 
 # Exploring visually noteworthy anomalies : 
@@ -455,12 +389,19 @@ det_event_cat1 %>% filter(WMO == 5906312)
 
 df_5906312 <- gen_df_fun(5906312)
 
-combined_plot_5906312 <- generate_plots(df_5906312,wmo = 5906312, start_date = "2023-08-28", end_date = "2023-10-28", cycle_number = c(32))
+combined_plot_5906312 <- generate_plots(wmo = 5906312, start_date = "2023-08-28", end_date = "2023-10-28", cycle_number = c(32))
+
+ggsave(combined_plot_5906312,
+       filename = "/data/GLOBARGO/figures/FiguresForPublication/section_plot_5906312.png",width = 12,height = 14)
 
 #6901767
 det_event_cat1 %>% filter(WMO == 6901767)
 
-df_6901767 <- gen_df_fun(6901767)
+df_6901767 <- gen_df_fun(6901767)[[1]]
 
-combined_plot_6901767 <- generate_plots(df_5904677,wmo = 6901767, start_date = "2017-12-18", end_date = "2018-02-08", cycle_number = c(179) )
+combined_plot_6901767 <- generate_plots(wmo = 6901767,
+                                        start_date = "2017-12-18",
+                                        end_date = "2018-02-08",
+                                        cycle_number = c(179) )
 
+ggsave(combined_plot_6901767,filename = "/data/GLOBARGO/figures/FiguresForPublication/section_plot_6901767.png",width = 12,height = 14)
