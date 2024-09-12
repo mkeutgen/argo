@@ -294,8 +294,13 @@ for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
         scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40)) +
         geom_line(aes(y = VALUE, color = "observed values")) +
         geom_point(aes(y = VALUE, color = "observed values"), size = .3) +
+<<<<<<< HEAD
         geom_point(aes(y = TM_9, color = "Trimmed Mean (k=9)"), size = .3) +
         geom_line(aes(y = TM_9, color = "Trimmed Mean (k=9)")) +
+=======
+        geom_point(aes(y = TM_11, color = "Trimmed Mean (k=9)"), size = .3) +
+        geom_line(aes(y = TM_11, color = "Trimmed Mean (k=9)")) +
+>>>>>>> b9babea38aca479decd395c1bfb361ae582cafff
         theme_bw() +
         labs(x = "Adjusted pressure (dbar)", y = "") +
         theme(legend.position = "bottom") +
