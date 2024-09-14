@@ -8,7 +8,7 @@ WMO <- 5904677
 
 
 unique_sub_loc <- read_csv("/data/GLOBARGO/data/unique_sub_loc.csv")
-det_event_cat1 <- read_csv("/data/GLOBARGO/data/detected_events_unique_with_carbon_cat1.csv")
+det_event_cat <- read_csv("/data/GLOBARGO/data/detected_events_carbon.csv")
 
 det_event_cat1 %>% filter(WMO == 5904677)
 
@@ -255,7 +255,7 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
   mld.df <- o[[2]]
   
   
-  anomalies_det <- det_event_cat1 %>% 
+  anomalies_det <- det_event_cat %>% 
     filter(WMO == wmo) %>% 
     filter(CYCLE_NUMBER %in% cycle_number) %>% 
     select(PRES_ADJUSTED, TIME)
@@ -316,7 +316,7 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
     scale_fill_viridis_c(name = "AOU (µmol/kg)") +
     theme_bw() +
     ggtitle("Apparent Oxygen Utilization (Linearly Interpolated)") + 
-    scale_y_reverse(limits = c(max(interp_df$PRES_ADJUSTED), 0)) +
+    scale_y_reverse(limits = c(1000, 0)) +
     scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
     geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED),
                color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)+
@@ -328,7 +328,7 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
     scale_fill_viridis_c(name = "Spiciness (kg/m³)") +
     theme_bw() +
     ggtitle("Spiciness (Linearly Interpolated)") + 
-    scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
+    scale_y_reverse(limits = c(1000, 0)) +
     scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
     geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 3, 
                alpha = 0.5, inherit.aes = FALSE)+
@@ -341,7 +341,7 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
       scale_fill_viridis_c(name = "BBP700 (m⁻¹)") +
       theme_bw() +
       ggtitle("BBP700_ADJUSTED (Linearly Interpolated)") + 
-      scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
+      scale_y_reverse(limits = c(1000, 0)) +
       scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
       geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red",
                  size = 3, alpha = 0.5, inherit.aes = FALSE)+
@@ -356,7 +356,7 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
       scale_fill_viridis_c(name = "log10(BBP700 + 1)") +
       theme_bw() +
       ggtitle("BBP700_ADJUSTED (Log-Transformed, Interpolated)") + 
-      scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
+      scale_y_reverse(limits = c(1000, 0)) +
       scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
       geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED),
                  color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)+
@@ -405,3 +405,26 @@ combined_plot_6901767 <- generate_plots(wmo = 6901767,
                                         cycle_number = c(179) )
 
 ggsave(combined_plot_6901767,filename = "/data/GLOBARGO/figures/FiguresForPublication/section_plot_6901767.png",width = 12,height = 14)
+
+# Eastern Pacific Plots, not very convincing are they ?
+
+combined_plot_5906296 <- generate_plots(wmo = 5906296,
+                                        start_date = "2022-07-25",
+                                        end_date = "2023-01-25",
+                                        cycle_number = c(77) )
+
+combined_plot_5906507 <- generate_plots(wmo = 5906507,
+                                        start_date = "2023-09-18",
+                                        end_date = "2023-11-25",
+                                        cycle_number = c(147) )
+
+
+# Western Pacific plots, Kuroshio extension
+combined_plot_5906511 <- generate_plots(wmo = 5906511,
+                                        start_date = "2022-10-01",
+                                        end_date = "2023-05-20",
+                                        cycle_number = c(18,19,24,35) )
+
+
+ggsave(combined_plot,filename = "/data/GLOBARGO/figures/FiguresForPublication/section_plot_5906511.png",width = 16,height = 14)
+

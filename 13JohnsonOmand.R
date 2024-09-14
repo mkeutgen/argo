@@ -1,4 +1,5 @@
-# Partie2BIS detection downscaled
+# Verifying if Johnson Omand float 5904479 # Cycle number 17 detected
+# Debugging, in fact the MLD_DEPTH is problematic
 setwd("~/Documents/GLOBARGO")
 
 library(tidyverse)
@@ -10,12 +11,15 @@ library(ggpubr)
 set.seed(10)
 wmolist <- readRDS("~/Documents/ARGO/BGC_Argo_WMO_PSAL_BBP_DOXY_TEMP.rds")
 # Read the manually classified dataframe
-classified_df <- read.csv("/data/GLOBARGO/data/classification_results_v3.csv")
+classified_df <- read.csv("/data/GLOBARGO/data/classification_results_v4.csv")
 classified_df$WMO <- gsub("_plot", "", classified_df$WMO)
 
 #Create two distinct df with high and low confidence subduction events
 cat1_events <- classified_df %>% filter(Category==1)
 cat2_events <- classified_df %>% filter(Category==2) 
+
+classified_df  %>% filter(WMO == 5904479)
+
 
 wmo_cat1 <- cat1_events$WMO %>% unique()
 
@@ -24,7 +28,7 @@ detected.events.list <- list()
 for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
   try({
     # Start with first WMO of the random sample
-    wmo <- wmo_cat1[j]
+    wmo <- 5904479
     #wmo <- wmo_cat2[j]
     #wmo <- 5904470
     #wmo <-  5905073  # with soooo much zero residuals, for instance prof 65 has sooo tiny little bumps and it'd
@@ -41,7 +45,7 @@ for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
     # Restrict the cycle_number to the one found by the Detection Algorithm on AOU
     # and SPIC to speed up the algorithm
     cycle_number <- cat1_events %>% filter(WMO== wmo) %>% select(Cycle) %>% unique() %>% as_vector()
-
+    
     
     
     # LOT OF ANOMALIES IFF
@@ -84,9 +88,6 @@ for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
                                format="dataframe" # specify format;  
     )
     
-    
-    # Select only the cycle number which are anomalous
-    data_df <- data_df %>% filter(data_df$CYCLE_NUMBER %in% cycle_number)
     
     # Calculations of residuals
     data_df <- data_df %>% filter(!is.na(DOXY)) %>% group_by(CYCLE_NUMBER) %>%
@@ -267,12 +268,13 @@ for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
     
     
     # Find time where outlying and associated pressure level :
-     # !!!! in this case OUT.T == 1 so only CARBON outlying profile are selected
+    # !!!! in this case OUT.T == 1 so only CARBON outlying profile are selected
     carb_eddy.id <- B %>% filter(OUT.T==1) %>% unique()
     carb_eddy.id <- carb_eddy.id %>% filter(PRES_ADJUSTED <= 700) %>% filter(PRES_ADJUSTED >= 200)
     
     carb_eddy.id$WMO <- wmo
     detected.events.list[[j]] <- carb_eddy.id
+    
     
     
     # Plotting :
@@ -368,7 +370,6 @@ for (j in seq_along(wmo_cat1) ) {  #seq_along(wmo_cat1)
       list.plots[[i]] <- combined_plot
       
     }
-    
     
     
     

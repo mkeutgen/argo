@@ -293,10 +293,6 @@ for (j in seq_along(wmolist)) {
     carb_eddy.id <- carb_eddy.id %>% filter(PRES_ADJUSTED <= 700) %>% filter(PRES_ADJUSTED >= 200)
     
     
-    carb_eddy.id <- carb_eddy.id %>%
-      inner_join(mld.df, by = "CYCLE_NUMBER") %>%
-      filter(PRES_ADJUSTED > MLD_DEPTH)
-    
     const.vec <- c()
     for (i in 1:nrow(carb_eddy.id)){
       spic <- data_df %>% filter(CYCLE_NUMBER==carb_eddy.id$CYCLE_NUMBER[i]) %>% dplyr::select(SPIC,PRES_ADJUSTED) %>% ungroup()
@@ -437,7 +433,7 @@ for (j in seq_along(wmolist)) {
     }
     
     if (length(list.plots) > 0) {
-      dir <- paste0("/data/GLOBARGO/figures/EddySubductionFiguresSensSpecIncrFigCorrectedTM9/", wmo)
+      dir <- paste0("/data/GLOBARGO/figures/EddySubductionFiguresSensSpecIncrFigCorrectedTM9AndNoMLD/", wmo)
       if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE)
       }
