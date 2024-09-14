@@ -476,3 +476,9 @@ write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_sens_and_spec
 # We should add a subdetection test to check that the first derivative changes sign : 
 
 
+## Manual classification in Python, 14 Sep 2024
+classified_df <- read.csv("/data/GLOBARGO/data/classification_results_v4.csv")
+classified_df$WMO <- gsub("_plot", "", classified_df$WMO)
+
+
+

@@ -1,14 +1,21 @@
 # Testing with Llort Float
 # TWO FUNCTIONS, ONE TO BUILD THE DATAFRAME WITH SPIC AOU AND BBP
 # ONE TO PLOT
-                                      
+library(akima)
+library(ggplot2)
+library(ggpubr)
+
+
 WMO <- 5904677
+#   plot_mld           : plot mixed layer depth, using either a 
+#                        temperature criterion (mld=1) or a density
+#                        criterion (mld=2); default: 0=off
 
 
 
 
 unique_sub_loc <- read_csv("/data/GLOBARGO/data/unique_sub_loc.csv")
-det_event_cat <- read_csv("/data/GLOBARGO/data/detected_events_carbon.csv")
+det_event_cat1 <- read_csv("/data/GLOBARGO/data/detected_events_unique_with_carbon_cat1.csv")
 
 det_event_cat1 %>% filter(WMO == 5904677)
 
@@ -31,9 +38,7 @@ max_depth <- 1000
 downscale_data_fun_wo_out <- function(df,b=20) {
   # Select and pivot data
   data <- df %>%
-    select(PRES_ADJUSTED, AOU,BBP700_ADJUSTED,
-           SPIC,CYCLE_NUMBER,LONGITUDE,LATITUDE,TIME,
-           BBP700_ADJUSTED)
+    select(PRES_ADJUSTED, AOU,BBP700_ADJUSTED, SPIC,CYCLE_NUMBER,LONGITUDE,LATITUDE,TIME,BBP700_ADJUSTED)
   
   # Determine bin edges
   bin_width <- b
@@ -72,15 +77,10 @@ gen_df_fun <- function(WMO){
   
   loaded = load_float_data(good_float_ids,variables = NULL)
   Data <- loaded$Data
+  # Compute MLD :
   Data <- calc_mld(Data,calc_mld_dens = 1)
-  
+
   Datai = Data[[1]]
-  
-  mld.data <- data.frame(TIME = as.POSIXct(Datai$TIME[1,], tz="UTC"),
-                         MLD = as.vector(Datai$MLD_DENS))
-  
-  
-  
   Mdata = loaded$Mdata
   
   
@@ -190,7 +190,7 @@ gen_df_fun <- function(WMO){
   }
   
   df = data.frame(df)
-
+  
   # Downscaling AOU SPIC and BBP700 to uniform 20 meters vertical res 
   list_of_tibbles <- df  %>%
     group_by(CYCLE_NUMBER) %>%
@@ -205,61 +205,47 @@ gen_df_fun <- function(WMO){
   
   downscaled_ds_list <- lapply(list_of_tibbles,downscale_data_fun_wo_out)
   
-  
-
-  
   df <- downscaled_ds_list %>% bind_rows()
   
   
   # So 233 is unique number of dates in that float
   # Where does 851 comes from ? format="dataframe"
-#  list_of_tibbles <- df  %>%
-#    group_by(TIME) %>%
-#    group_split()
-#
-#  for (i in seq_along(list_of_tibbles)) {
-#    tibble_i <- list_of_tibbles[[i]]
-#    #tibble_i$BBP700_ADJUSTED <- rollmedian(tibble_i$BBP700_ADJUSTED, k = 3, fill = NA)
-#    # Assign xmin and xmax to each tibble
-#    tibble_i$xmin <- rep(full_xmin[i], nrow(tibble_i))
-#    tibble_i$xmax <- rep(full_xmax[i], nrow(tibble_i))
-#    
-#    # Replace the tibble in the list with the modified one
-#    list.df[[i]] <- tibble_i
-#  }
+  list_of_tibbles <- df  %>%
+    group_by(TIME) %>%
+    group_split()
+  list.df <- list()
+  
+  for (i in seq_along(list_of_tibbles)) {
+    tibble_i <- list_of_tibbles[[i]]
+    #tibble_i$BBP700_ADJUSTED <- rollmedian(tibble_i$BBP700_ADJUSTED, k = 3, fill = NA)
+    # Assign xmin and xmax to each tibble
+    tibble_i$xmin <- rep(full_xmin[i], nrow(tibble_i))
+    tibble_i$xmax <- rep(full_xmax[i], nrow(tibble_i))
+    
+    # Replace the tibble in the list with the modified one
+    list.df[[i]] <- tibble_i
+  }
   
   
   
-#  df <- list.df %>% bind_rows()
+  df <- list.df %>% bind_rows()
   
   ### END OF DATAFRAME GEN
   
-  output <- list(df,mld.data)
-  
-  return(output)
+  return(df)
   
 }
 
-o <- gen_df_fun(WMO=6901767)
+df <- gen_df_fun(WMO=5904105)
 
-df <- o[[1]]
-mld.df <- o[[2]]
 
 # Function to process data, interpolate, and plot results
 
-generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FALSE) {
-
-  # Calling the generate df function
-  o <- gen_df_fun(wmo)
-  df <- o[[1]]
-  mld.df <- o[[2]]
-  
-  
-  anomalies_det <- det_event_cat %>% 
+generate_plots <- function(df, wmo, start_date, end_date, cycle_number, logbbp = FALSE) {
+  anomalies_det <- det_event_cat1 %>% 
     filter(WMO == wmo) %>% 
     filter(CYCLE_NUMBER %in% cycle_number) %>% 
     select(PRES_ADJUSTED, TIME)
-  
   anomalies_det$TIME <- as.POSIXct(anomalies_det$TIME)
   
   df_filtered <- df %>%
@@ -269,7 +255,6 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
     filter(!is.na(PRES_ADJUSTED) & !is.na(AOU) & !is.na(SPIC) & !is.na(TIME))
   
   reference_time <- min(df_filtered_clean$TIME)
-  
   df_filtered_clean$TIME_numeric <- as.numeric(difftime(df_filtered_clean$TIME, reference_time, units = "days"))
   
   interp_result_AOU <- with(df_filtered_clean, interp(
@@ -307,33 +292,23 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
   # Extract unique time breaks
   time_breaks <- df_filtered_clean$TIME %>% unique()
   
-  mld.df_filtered <-  mld.df %>%
-    filter(TIME >= as.POSIXct(start_date) & TIME <= as.POSIXct(end_date))
-  
-  
   plot_AOU <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = AOU)) +
     geom_tile() +
     scale_fill_viridis_c(name = "AOU (µmol/kg)") +
     theme_bw() +
     ggtitle("Apparent Oxygen Utilization (Linearly Interpolated)") + 
-    scale_y_reverse(limits = c(1000, 0)) +
+    scale_y_reverse(limits = c(max(interp_df$PRES_ADJUSTED), 0)) +
     scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
-    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED),
-               color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)+
-    geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),inherit.aes = FALSE)
-  
+    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)
   
   plot_SPIC <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = SPIC)) +
     geom_tile() +
     scale_fill_viridis_c(name = "Spiciness (kg/m³)") +
     theme_bw() +
     ggtitle("Spiciness (Linearly Interpolated)") + 
-    scale_y_reverse(limits = c(1000, 0)) +
+    scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
     scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
-    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 3, 
-               alpha = 0.5, inherit.aes = FALSE)+
-    geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),inherit.aes = FALSE)
-  
+    geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)
   
   if (logbbp == FALSE) {
     plot_BBP700 <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = BBP700_ADJUSTED)) +
@@ -341,27 +316,18 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
       scale_fill_viridis_c(name = "BBP700 (m⁻¹)") +
       theme_bw() +
       ggtitle("BBP700_ADJUSTED (Linearly Interpolated)") + 
-      scale_y_reverse(limits = c(1000, 0)) +
+      scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 50)) +
       scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
-      geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red",
-                 size = 3, alpha = 0.5, inherit.aes = FALSE)+
-      geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),
-                inherit.aes = FALSE)+
-      geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),inherit.aes = FALSE)
-    
-    
+      geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)
   } else {
     plot_BBP700 <- ggplot(interp_df, aes(x = TIME, y = PRES_ADJUSTED, fill = log10(BBP700_ADJUSTED + 1))) +
       geom_tile() +
       scale_fill_viridis_c(name = "log10(BBP700 + 1)") +
       theme_bw() +
       ggtitle("BBP700_ADJUSTED (Log-Transformed, Interpolated)") + 
-      scale_y_reverse(limits = c(1000, 0)) +
+      scale_y_reverse(limits = c(max(df_filtered$PRES_ADJUSTED), 0)) +
       scale_x_datetime(breaks = time_breaks, date_labels = "%d-%b-%Y") +
-      geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED),
-                 color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)+
-      geom_line(data = mld.df_filtered,aes(x=TIME,y=MLD,color="Mixed-Layer Depth"),inherit.aes = FALSE)
-    
+      geom_point(data = anomalies_det, aes(x = TIME, y = PRES_ADJUSTED), color = "red", size = 3, alpha = 0.5, inherit.aes = FALSE)
   }
   
   combined_plot <- ggarrange(
@@ -374,13 +340,9 @@ generate_plots <- function(wmo, start_date, end_date, cycle_number, logbbp = FAL
 }
 
 # Example usage:
-output_5904677 <- gen_df_fun(5904677)
+df_5904677 <- gen_df_fun(5904677)
 
-df_5904677 <- output_5904677[[1]]
-df_5904677_mld <- output_5904677[[2]]
-
-combined_plot_5904677 <- generate_plots(wmo = 5904677, start_date = "2016-09-01",
-                                        end_date = "2016-12-31", cycle_number = c(25,27) )
+combined_plot_5904677 <- generate_plots(df_5904677,wmo = 5904677, start_date = "2016-09-01", end_date = "2016-12-31", cycle_number = c(25,27) )
 
 
 # Exploring visually noteworthy anomalies : 
@@ -389,42 +351,13 @@ det_event_cat1 %>% filter(WMO == 5906312)
 
 df_5906312 <- gen_df_fun(5906312)
 
-combined_plot_5906312 <- generate_plots(wmo = 5906312, start_date = "2023-08-28", end_date = "2023-10-28", cycle_number = c(32))
-
-ggsave(combined_plot_5906312,
-       filename = "/data/GLOBARGO/figures/FiguresForPublication/section_plot_5906312.png",width = 12,height = 14)
+combined_plot_5906312 <- generate_plots(df_5906312,wmo = 5906312, start_date = "2023-08-28", end_date = "2023-10-28", cycle_number = c(32))
 
 #6901767
 det_event_cat1 %>% filter(WMO == 6901767)
 
-df_6901767 <- gen_df_fun(6901767)[[1]]
+df_6901767 <- gen_df_fun(6901767)
 
-combined_plot_6901767 <- generate_plots(wmo = 6901767,
-                                        start_date = "2017-12-18",
-                                        end_date = "2018-02-08",
-                                        cycle_number = c(179) )
+combined_plot_6901767 <- generate_plots(df_5904677,wmo = 6901767, start_date = "2017-12-18", end_date = "2018-02-08", cycle_number = c(179) )
 
 ggsave(combined_plot_6901767,filename = "/data/GLOBARGO/figures/FiguresForPublication/section_plot_6901767.png",width = 12,height = 14)
-
-# Eastern Pacific Plots, not very convincing are they ?
-
-combined_plot_5906296 <- generate_plots(wmo = 5906296,
-                                        start_date = "2022-07-25",
-                                        end_date = "2023-01-25",
-                                        cycle_number = c(77) )
-
-combined_plot_5906507 <- generate_plots(wmo = 5906507,
-                                        start_date = "2023-09-18",
-                                        end_date = "2023-11-25",
-                                        cycle_number = c(147) )
-
-
-# Western Pacific plots, Kuroshio extension
-combined_plot_5906511 <- generate_plots(wmo = 5906511,
-                                        start_date = "2022-10-01",
-                                        end_date = "2023-05-20",
-                                        cycle_number = c(18,19,24,35) )
-
-
-ggsave(combined_plot,filename = "/data/GLOBARGO/figures/FiguresForPublication/section_plot_5906511.png",width = 16,height = 14)
-

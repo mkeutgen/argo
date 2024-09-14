@@ -10,7 +10,7 @@ library(ggpubr)
 set.seed(10)
 wmolist <- readRDS("~/Documents/ARGO/BGC_Argo_WMO_PSAL_BBP_DOXY_TEMP.rds")
 # Read the manually classified dataframe
-classified_df <- read.csv("/data/GLOBARGO/data/classification_results_v3.csv")
+classified_df <- read.csv("/data/GLOBARGO/data/classification_results_v4.csv")
 classified_df$WMO <- gsub("_plot", "", classified_df$WMO)
 
 #Create two distinct df with high and low confidence subduction events
