@@ -435,3 +435,12 @@ carbon_merged %>% filter(LONGITUDE > -150) %>%
 carbon_merged %>% filter(LONGITUDE < 170) %>%
   filter(LONGITUDE > 130 ) %>% filter(LATITUDE >10) %>%
   select(PRES_ADJUSTED,LONGITUDE,LATITUDE,Category,WMO,TIME,CYCLE_NUMBER)
+
+
+# Equatorial Event 
+carbon_merged %>% filter(LONGITUDE < 100) %>%
+  filter(LONGITUDE > 70 ) %>% filter(LATITUDE > -30) %>%
+  select(PRES_ADJUSTED,LONGITUDE,LATITUDE,Category,WMO,TIME,CYCLE_NUMBER)
+
+
+ 

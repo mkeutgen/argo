@@ -2,17 +2,17 @@
 library(readr)
 library(tidyverse)
 library(lubridate)
-classification_results_v3 <- read_csv("/data/GLOBARGO/data/classification_results_v3.csv")
-classification_results_v3 <- classification_results_v3 %>%  mutate(WMO = str_replace(WMO, "_plot$", ""))
-classification_results_v3$CYCLE_NUMBER <- classification_results_v3$Cycle
-classification_results_v3$WMO <- as.numeric(classification_results_v3$WMO)
+classification_results_v4 <- read_csv("/data/GLOBARGO/data/classification_results_v4.csv")
+classification_results_v4 <- classification_results_v4 %>%  mutate(WMO = str_replace(WMO, "_plot$", ""))
+classification_results_v4$CYCLE_NUMBER <- classification_results_v4$Cycle
+classification_results_v4$WMO <- as.numeric(classification_results_v4$WMO)
 argo_profiles <- read_csv("/data/GLOBARGO/data/argo_profiles_df.csv")
 
 detected.events.df <- read_csv("/data/GLOBARGO/data/detected_events_sens_and_spec_incr.csv")
 detected.events.df %>% select(LATITUDE,LONGITUDE,WMO,CYCLE_NUMBER) %>% unique()
 
 merged_df <- detected.events.df %>%
-  left_join(classification_results_v3, by = c("WMO", "CYCLE_NUMBER"))
+  left_join(classification_results_v4, by = c("WMO", "CYCLE_NUMBER"))
 
 # Remove spurrious Cycle column
 merged_df <- merged_df %>% dplyr::select(-Cycle)
