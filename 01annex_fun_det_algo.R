@@ -90,7 +90,6 @@ perform_checks <- function(profile_data, target_level, variable_name,second_deri
 }
 
 
-potential_eddy_events %>% filter(CYCLE_NUMBER == 17) %>% View()
 
 
 

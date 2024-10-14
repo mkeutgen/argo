@@ -26,9 +26,9 @@ detected_events_list <- list()
 # Hyperparameters :
 cutoff <- 1.96
 resolution <- 40
-
+window <- 60 
 # different wmos tried
-wmo <- 5904677
+wmo <- 5904677 
 wmo <- 2902177
 # Main processing loop over each WMO ID
 for (j in seq_along(wmolist)) {
@@ -89,10 +89,10 @@ for (j in seq_along(wmolist)) {
       group_split()
     
     
-    # Vertical resolution to 20
+    # Downscale Vertical resolution to 20
     
-    downscaled_data_list <- lapply(cycles_list, downscale_data_fun_wo_out,bin_width = 20)
-    downscaled_data_20m <- bind_rows(downscaled_data_list)
+    downscaled_data_list_20m <- lapply(cycles_list, downscale_data_fun_wo_out,bin_width = 20)
+    downscaled_data_20m <- bind_rows(downscaled_data_list_20m)
     residuals_data_20m <- downscaled_data_20m %>%
       group_by(CYCLE_NUMBER) %>%
       group_modify(~ .x %>%
@@ -143,8 +143,8 @@ for (j in seq_along(wmolist)) {
       pivot_wider(names_from = VAR, values_from = c(SCALE_RES_ROB,VALUE))
     
     
-    
-    downscaled_data_list <- lapply(cycles_list, downscale_data_fun_wo_out)
+    # outlier calculation is on 40 m
+    downscaled_data_list <- lapply(cycles_list, downscale_data_fun_wo_out,bin_width = 40)
     downscaled_data <- bind_rows(downscaled_data_list)
     
     # Prepare data for residuals calculation
@@ -210,7 +210,7 @@ for (j in seq_along(wmolist)) {
              LONGITUDE, TIME,SCALE_RES_ROB_ABS_SAL,
              SCALE_RES_ROB_AOU,VALUE_ABS_SAL,VALUE_AOU) %>%
       unique() %>%
-      filter(PRES_ADJUSTED >= 200, PRES_ADJUSTED <= 700)
+      filter(PRES_ADJUSTED >= 200, PRES_ADJUSTED <= 1000)
     
     
     # Initialize columns to store the check results
@@ -224,20 +224,20 @@ for (j in seq_along(wmolist)) {
       cycle_num <- potential_eddy_events$CYCLE_NUMBER[i]
       pres_level <- potential_eddy_events$PRES_ADJUSTED[i]
       
-      # Get the profile data for the current cycle
+      # Get the profile data at 20m resolution for the current cycle
       profile_data <- residuals_data_wf_20m %>% filter(CYCLE_NUMBER == cycle_num)
       
       # Perform checks for AOU
       checks_aou <- perform_checks(profile_data, target_level = pres_level,
                                    variable_name = "VALUE_AOU",
-                                   second_deriv = 0.001,window=100)
+                                   second_deriv = 0.001,window=60)
       potential_eddy_events$AOU_gradient_sign_change[i] <- checks_aou$gradient_sign_change
       potential_eddy_events$AOU_second_derivative_check[i] <- checks_aou$second_derivative_check
       
       # Perform checks for ABS_SAL
       checks_abs_sal <- perform_checks(profile_data, target_level = pres_level,
                                        variable_name = "VALUE_ABS_SAL",second_deriv = 0.001,
-                                       window=100)
+                                       window=60)
       potential_eddy_events$ABS_SAL_gradient_sign_change[i] <- checks_abs_sal$gradient_sign_change
       potential_eddy_events$ABS_SAL_second_derivative_check[i] <- checks_abs_sal$second_derivative_check
     }
@@ -246,7 +246,6 @@ for (j in seq_along(wmolist)) {
     filtered_events <- potential_eddy_events %>%
       filter(
         AOU_gradient_sign_change == TRUE,
-        AOU_second_derivative_check == TRUE,
         ABS_SAL_gradient_sign_change == TRUE)
     
     
@@ -302,21 +301,20 @@ for (j in seq_along(wmolist)) {
     # Plotting profiles and residuals
     for (i in seq_along(filtered_events$CYCLE_NUMBER)) {
       current_cycle <- filtered_events$CYCLE_NUMBER[i]
-      current_data <- residuals_data_20m %>% filter(CYCLE_NUMBER == current_cycle)
+      current_data_20m <- residuals_data_20m %>% filter(CYCLE_NUMBER == current_cycle)
+      current_data_40m <- residuals_data %>% filter(CYCLE_NUMBER == current_cycle)
       current_eddy <- filtered_events %>% filter(CYCLE_NUMBER == current_cycle)
       pres_level <- filtered_events$PRES_ADJUSTED[i]
       
   
       
       # Plotting profiles
-      prof_plot[[i]] <- current_data %>%
+      prof_plot[[i]] <- current_data_20m %>%
         ggplot(aes(x = PRES_ADJUSTED, y = VALUE)) +
         facet_grid(. ~ VAR, scales = "free") +
         coord_flip() +
         scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40)) +
         geom_line(aes(y = VALUE, color = "Observed Values")) +
-        geom_point(aes(y = VALUE, color = "Observed Values"), size = 2) +
-        geom_point(aes(y = TM_9, color = "Trimmed Mean (k=9)"), size = 2) +
         geom_line(aes(y = TM_9, color = "Trimmed Mean (k=9)")) +
         theme_bw() +
         labs(x = "Adjusted Pressure (dbar)", y = "") +
@@ -332,7 +330,7 @@ for (j in seq_along(wmolist)) {
       )
       
       # Plotting residuals
-      res_plot[[i]] <- current_data %>%
+      res_plot[[i]] <- current_data_40m %>%
         ggplot(aes(x = PRES_ADJUSTED, y = SCALE_RES_ROB)) +
         scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40)) +
         facet_grid(. ~ VAR, scales = "free") +
@@ -383,7 +381,7 @@ for (j in seq_along(wmolist)) {
         ggsave(file_name, list_plots[[k]], width = 10, height = 10)
       }
     }
-    
+    filtered_events$WMO <- wmo
     # Store the eddy events in the list
     detected_events_list[[j]] <- filtered_events
   }, silent = TRUE)
@@ -396,3 +394,6 @@ write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_abs_sal_var_v
 
 # ggsave(combined_plot,filename = "/data/GLOBARGO/figures/InterestingFigures/wmo6901767_abs_sal_res40.png",width = 10,height = 10)
 ggsave(combined_plot,filename = "/data/GLOBARGO/figures/InterestingFigures/wmo6901767_abs_sal_res20.png",width = 10,height = 10)
+
+
+detected.events.df
