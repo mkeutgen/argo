@@ -313,7 +313,7 @@ for (j in seq_along(wmolist)) {
         ggplot(aes(x = PRES_ADJUSTED, y = VALUE)) +
         facet_grid(. ~ VAR, scales = "free") +
         coord_flip() +
-        scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40)) +
+        scale_x_reverse(limits = c(1200, 0), breaks = seq(0, 1200, by = 40)) +
         geom_line(aes(y = VALUE, color = "Observed Values")) +
         geom_line(aes(y = TM_9, color = "Trimmed Mean (k=9)")) +
         theme_bw() +
@@ -332,7 +332,7 @@ for (j in seq_along(wmolist)) {
       # Plotting residuals
       res_plot[[i]] <- current_data_40m %>%
         ggplot(aes(x = PRES_ADJUSTED, y = SCALE_RES_ROB)) +
-        scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40)) +
+        scale_x_reverse(limits = c(1200, 0), breaks = seq(0, 1200, by = 40)) +
         facet_grid(. ~ VAR, scales = "free") +
         coord_flip() +
         theme_bw() +

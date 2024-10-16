@@ -1,7 +1,4 @@
-##############################
-### Sensitivity Estimation ###
-##############################
-
+# Load necessary libraries
 library(tidyverse)
 library(robustbase)
 library(gsw)
@@ -9,481 +6,385 @@ library(zoo)
 library(oce)
 library(ggpubr)
 library(segmented)
-# Load it last
 library(dplyr)
 library(conflicted)
+library(pracma)
+# Resolve function conflicts in favor of dplyr
 conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
-# IDEAS : downscale the residuals, not the original data BUT 
-# BUT filter out profiles that are too monotonic, use segmentate ?
 
+# STILL TO DO : make sure first derivative works
+# Implement a test based on 2nd derivative if it's larger than 0.01 for AOU. 
+
+
+# Read the list of WMO IDs
 wmolist <- readRDS("~/Documents/ARGO/BGC_Argo_WMO_PSAL_BBP_DOXY_TEMP.rds")
-detected.events.list <- list()
 
+# Initialize an empty list to store detected eddy events
+detected_events_list <- list()
 
-# cycle_number <- results %>% filter(WMO == wmo) %>% select(CYCLE_NUMBER) %>% unique() %>% as_vector()
-
-# Necessary functions : 
-calculate_derivative <- function(data) {
-  # Calculate the difference in VALUE and PRES_ADJUSTED
-  data %>%
-    arrange(PRES_ADJUSTED) %>%
-    mutate(
-      dVALUE = c(NA, diff(VALUE) / diff(PRES_ADJUSTED))
-    )
-}
-# Post-processing function that check if there's indeed a peak at the detected_level : 
-check_sign_change <- function(derivatives, target_level, check_depth = 50) {
-  # Find the index of the target level
-  target_index <- which.min(abs(derivatives$PRES_ADJUSTED - target_level))
-  
-  # Get indices to check around the target level
-  lower_index <- which.min(abs(derivatives$PRES_ADJUSTED - (target_level - check_depth)))
-  upper_index <- which.min(abs(derivatives$PRES_ADJUSTED - (target_level + check_depth)))
-  
-  # Check for sign changes in the derivative around the target level
-  sign_changes <- sign(derivatives$dVALUE[lower_index:upper_index])
-  change_detected <- any(diff(sign_changes) != 0, na.rm = TRUE)
-  
-  return(change_detected)
-}
-
-downscale_data_fun <- function(df, b = 20, cutoff = 1.96) {
-  data <- df %>%
-    dplyr::select(PRES_ADJUSTED, SCALE.RES.ROB, VAR, CYCLE_NUMBER, LONGITUDE, LATITUDE,TIME) %>%
-    pivot_wider(names_from = VAR, values_from = SCALE.RES.ROB)
-  
-  bin_width <- b
-  pressure_range <- range(data$PRES_ADJUSTED, na.rm = TRUE)
-  bins <- seq(from = floor(pressure_range[1] / bin_width) * bin_width,
-              to = ceiling(pressure_range[2] / bin_width) * bin_width,
-              by = bin_width)
-  
-  data$bin <- cut(data$PRES_ADJUSTED, breaks = bins, include.lowest = TRUE, labels = FALSE)
-  
-  downscaled_data <- data %>%
-    group_by(bin) %>%
-    mutate(across(-c(PRES_ADJUSTED, LATITUDE, LONGITUDE, CYCLE_NUMBER,TIME), \(x) mean(x, na.rm = TRUE)))
-  
-  downscaled_data$PRES_ADJUSTED <- (bins[downscaled_data$bin] + bins[downscaled_data$bin + 1]) / 2
-  
-  downscaled_data <- downscaled_data %>%
-    mutate(OUT.S = ifelse(abs(AOU) > cutoff & abs(SPIC) > cutoff & AOU < 0, 1, 0))
-  
-  return(downscaled_data)
-}
-
-
-# Functions for SPIC anomaly 
-find_closest_to_surface <- function(data) {
-  data %>%
-    filter(!is.na(SPIC)) %>%    # Filter out rows where SPIC is NA
-    arrange(PRES_ADJUSTED) %>%  # Sort by pressure
-    slice(1) %>%
-    pull(SPIC)
-}
-
-compute_mean_spic_50m <- function(spic_df) {
-  # Filter the dataframe for PRES_ADJUSTED values less than or equal to 50
-  filtered_df <- spic_df %>%
-    filter(PRES_ADJUSTED <= 50)
-  
-  # Calculate the mean of SPIC, omitting missing values (NA)
-  mean_spic <- mean(filtered_df$SPIC, na.rm = TRUE)
-  
-  return(mean_spic)
-}
-
-
-mean_spic_at_min_max_levels <- function(data, target_pressure) {
-  # Filter for rows within 100 units of the target pressure
-  filtered_data <- data %>%
-    filter(!is.na(SPIC)) %>%  # Filter out rows where SPIC is NA
-    filter(PRES_ADJUSTED >= (target_pressure - 100) & PRES_ADJUSTED <= (target_pressure + 100))  # Filter for the range
-  
-  # Find the minimum and maximum pressure levels within the range
-  min_pressure <- min(filtered_data$PRES_ADJUSTED, na.rm = TRUE)
-  max_pressure <- max(filtered_data$PRES_ADJUSTED, na.rm = TRUE)
-  
-  # Filter the data for the minimum and maximum pressure levels
-  spic_values <- filtered_data %>%
-    filter(PRES_ADJUSTED == min_pressure | PRES_ADJUSTED == max_pressure) %>%
-    pull(SPIC)  # Extract SPIC values
-  
-  # Calculate the mean SPIC
-  mean_spic <- mean(spic_values, na.rm = TRUE)
-  
-  return(mean_spic)
-}
-
-
+# Hyperparameters :
+cutoff <- 1.96
+resolution <- 40
+window <- 60 
+# different wmos tried
+wmo <- 5904677 
+wmo <- 2902177
+# Main processing loop over each WMO ID
 for (j in seq_along(wmolist)) {
   try({
+    #
+    #5906635
     
+    
+    # Get current WMO ID
     wmo <- wmolist[j]
     
-    # wmo <- 5904677
-    # wmo <- 1902455
-    # wmo <- 1902593
+    # Load data for the current float (assuming 'load_float_data' is an internal function)
+    float_data <- load_float_data(
+      float_ids = wmo,
+      variables = c(
+        "DATA_TYPE", "PLATFORM_NUMBER", "BBP700", "BBP700_dPRES",
+        "BBP700_ADJUSTED_QC", "LATITUDE", "LONGITUDE", "PROFILE_TEMP_QC",
+        "PROFILE_DOXY_QC", "PROFILE_BBP700_QC", "PRES_QC", "PRES",
+        "PRES_ADJUSTED", "PROFILE_PSAL_QC", "CHLA_QC", "CHLA_ADJUSTED",
+        "CHLA_ADJUSTED_ERROR", "DOXY", "DOXY_QC", "DOXY_ADJUSTED",
+        "DOXY_ADJUSTED_QC", "DOXY_ADJUSTED_ERROR", "PSAL", "PSAL_dPRES",
+        "PSAL_ADJUSTED", "PSAL_ADJUSTED_QC", "TEMP", "TEMP_QC", "TEMP_dPRES",
+        "TEMP_ADJUSTED", "TEMP_ADJUSTED_QC", "TEMP_ADJUSTED_ERROR"
+      ),
+      format = "dataframe"
+    )
     
-    data_df <- load_float_data(float_ids = wmo,
-                               variables = c("DATA_TYPE", "PLATFORM_NUMBER", "BBP700", "BBP700_dPRES",
-                                             "BBP700_ADJUSTED_QC", "LATITUDE", "LONGITUDE", "PROFILE_TEMP_QC",
-                                             "PROFILE_DOXY_QC", "PROFILE_BBP700_QC", "PRES_QC", "PRES",
-                                             "PRES_ADJUSTED", "PROFILE_PSAL_QC", "CHLA_QC", "CHLA_ADJUSTED",
-                                             "CHLA_ADJUSTED_ERROR", "DOXY", "DOXY_QC", "DOXY_ADJUSTED",
-                                             "DOXY_ADJUSTED_QC", "DOXY_ADJUSTED_ERROR", "PSAL", "PSAL_dPRES",
-                                             "PSAL_ADJUSTED", "PSAL_ADJUSTED_QC", "TEMP", "TEMP_QC", "TEMP_dPRES",
-                                             "TEMP_ADJUSTED", "TEMP_ADJUSTED_QC", "TEMP_ADJUSTED_ERROR"),
-                               format = "dataframe")
+    # Preprocess data: calculate additional oceanographic parameters
+    float_data <- float_data %>%
+      filter(!is.na(DOXY)) %>%
+      group_by(CYCLE_NUMBER) %>%
+      mutate(
+        ABS_SAL = gsw::gsw_SA_from_SP(
+          SP = PSAL_ADJUSTED,
+          p = PRES_ADJUSTED,
+          longitude = first(LONGITUDE),
+          latitude = first(LATITUDE)
+        ),
+        CONS_TEMP = gsw::gsw_CT_from_t(
+          SA = ABS_SAL,
+          t = TEMP_ADJUSTED,
+          p = PRES_ADJUSTED
+        ),
+        SAT_DOXY = gsw_O2sol(
+          SA = ABS_SAL,
+          CT = CONS_TEMP,
+          p = PRES_ADJUSTED,
+          longitude = first(LONGITUDE),
+          latitude = first(LATITUDE)
+        ),
+        AOU = SAT_DOXY - DOXY_ADJUSTED,
+        SIGMA0 = gsw::gsw_sigma0(SA = ABS_SAL, CT = CONS_TEMP)
+      )
     
-    
-    data_df <- data_df %>% filter(!is.na(DOXY)) %>% group_by(CYCLE_NUMBER) %>%
-      mutate(SPIC = swSpice(salinity = PSAL_ADJUSTED, temperature = TEMP_ADJUSTED,
-                            latitude = first(LATITUDE), longitude = first(LONGITUDE), eos = "unesco"),
-             ABS_SAL = gsw::gsw_SA_from_SP(SP = PSAL_ADJUSTED, p = PRES_ADJUSTED,
-                                           longitude = first(LONGITUDE), latitude = first(LATITUDE)),
-             CONS_TEMP = gsw::gsw_CT_from_t(SA = ABS_SAL, t = TEMP_ADJUSTED, p = PRES_ADJUSTED),
-             SAT_DOXY = gsw_O2sol(SA = ABS_SAL, CT = CONS_TEMP, p = PRES_ADJUSTED,
-                                  longitude = first(LONGITUDE), latitude = first(LATITUDE)),
-             AOU = SAT_DOXY - DOXY_ADJUSTED,
-             SIGMA0 = gsw::gsw_sigma0(SA = ABS_SAL, CT = CONS_TEMP))
-    
-    downscale_data_fun_wo_out <- function(df, b = 20) {
-      data <- df %>%
-        dplyr::select(PRES_ADJUSTED, AOU, SPIC, CYCLE_NUMBER, LONGITUDE, LATITUDE, TIME)
-      
-      bin_width <- b
-      pressure_range <- range(data$PRES_ADJUSTED, na.rm = TRUE)
-      bins <- seq(from = floor(pressure_range[1] / bin_width) * bin_width,
-                  to = ceiling(pressure_range[2] / bin_width) * bin_width,
-                  by = bin_width)
-      
-      data$bin <- cut(data$PRES_ADJUSTED, breaks = bins, include.lowest = TRUE, labels = FALSE)
-      
-      downscaled_data <- data %>%
-        group_by(bin) %>%
-        mutate(across(-c(PRES_ADJUSTED, LATITUDE, LONGITUDE, CYCLE_NUMBER, TIME), mean, na.rm = TRUE))
-      
-      downscaled_data$PRES_ADJUSTED <- (bins[downscaled_data$bin] + bins[downscaled_data$bin + 1]) / 2
-      
-      downscaled_data <- unique(downscaled_data)
-      return(downscaled_data)
-    }
-    
-    list_of_tibbles <- data_df %>%
+    # Downscale data without outlier detection
+    cycles_list <- float_data %>%
       group_by(CYCLE_NUMBER) %>%
       group_split()
     
     
-    mld.vec <- c()
-    for (i in seq_along(list_of_tibbles)) {
-      temperature <- list_of_tibbles[[i]]$TEMP_ADJUSTED
-      pressure <- list_of_tibbles[[i]]$PRES_ADJUSTED
-      sigma0 <- list_of_tibbles[[i]]$SIGMA0
-      
-      # Calculate N2 and find the index of the maximum value
-      n2 <- swN2(pressure, sigmaTheta = sigma0)
-      mid <- which.max(n2)
-      
-      # Check if mid is not empty and assign value to mld.vec, otherwise assign NA
-      if (length(mid) > 0 && !is.na(mid)) {
-        mld.vec[i] <- pressure[mid]
-      } else {
-        mld.vec[i] <- NA
-      }
-    }
+    # Downscale Vertical resolution to 20
     
-    
-    mld.df <- data.frame(CYCLE_NUMBER = unique(data_df$CYCLE_NUMBER), MLD_DEPTH = mld.vec)
-    
-    # In this implementation, we downscale before computing residuals :
-    
-    downscaled_ds_list <- lapply(list_of_tibbles, downscale_data_fun_wo_out)
-    df <- downscaled_ds_list %>% bind_rows()
-    
-    A <- df %>%  #df/data_df should be data_df if you don't want to downscale residuals
+    downscaled_data_list_20m <- lapply(cycles_list, downscale_data_fun_wo_out,bin_width = 20)
+    downscaled_data_20m <- bind_rows(downscaled_data_list_20m)
+    residuals_data_20m <- downscaled_data_20m %>%
       group_by(CYCLE_NUMBER) %>%
       group_modify(~ .x %>%
-                     dplyr::select(PRES_ADJUSTED, AOU, SPIC, LATITUDE, LONGITUDE, TIME) %>%
-                     pivot_longer(!c(PRES_ADJUSTED, LATITUDE, LONGITUDE, TIME), names_to = "VAR", values_to = "VALUE") %>%
+                     select(PRES_ADJUSTED, AOU, ABS_SAL, LATITUDE, LONGITUDE, TIME) %>%
+                     pivot_longer(
+                       cols = c(AOU, ABS_SAL),
+                       names_to = "VAR",
+                       values_to = "VALUE"
+                     ) %>%
                      group_by(VAR) %>%
                      mutate(
                        MA_3 = rollmean(VALUE, 3, fill = NA),
-                       TM_11 = rollapply(VALUE, 11,
-                                         function(x) {
-                                           x_subset <- x[x >= quantile(x, 0.2, na.rm = TRUE) & x <= quantile(x, 0.8, na.rm = TRUE)]
-                                           if (length(x_subset) > 0) {
-                                             mean(x_subset, na.rm = TRUE)
-                                           } else {
-                                             NA
-                                           }
-                                         },
-                                         fill = NA),
                        TM_9 = rollapply(VALUE, 9,
                                         function(x) {
-                                          x_subset <- x[x >= quantile(x, 0.2, na.rm = TRUE) & x <= quantile(x, 0.8, na.rm = TRUE)]
+                                          x_subset <- x[
+                                            x >= quantile(x, 0.2, na.rm = TRUE) &
+                                              x <= quantile(x, 0.8, na.rm = TRUE)
+                                          ]
                                           if (length(x_subset) > 0) {
                                             mean(x_subset, na.rm = TRUE)
                                           } else {
                                             NA
                                           }
                                         },
-                                        fill = NA),
-                       MM_11 = rollmedian(VALUE, 11, fill = NA),
-                       ROB.RES = MA_3 - TM_9,
-                       ROB.RES.RAW = VALUE - TM_9
+                                        fill = NA
+                       ),
+                       ROB_RES = MA_3 - TM_9,
+                       ROB_RES_RAW = VALUE - TM_9
                      ) %>%
                      mutate(
-                       IQRN = IQR(ROB.RES.RAW, na.rm = TRUE) / 1.349,
-                       MEDIAN_RES = median(ROB.RES.RAW[ROB.RES.RAW != 0], na.rm = TRUE)
+                       IQRN = IQR(ROB_RES_RAW, na.rm = TRUE) / 1.349,
+                       MEDIAN_RES = median(ROB_RES_RAW[ROB_RES_RAW != 0], na.rm = TRUE)
                      ) %>%
                      mutate(
-                       SCALE.RES.ROB = ifelse(ROB.RES.RAW == 0, 0,
-                                              (ROB.RES.RAW - MEDIAN_RES) / IQRN)
+                       SCALE_RES_ROB = ifelse(
+                         ROB_RES_RAW == 0,
+                         0,
+                         (ROB_RES_RAW - MEDIAN_RES) / IQRN
+                       )
                      )
       ) %>%
       ungroup()
     
-    # Just comparing trimmed mean and median behavior : 
-    
-    # Plot cycle number 19, float id wmo5904677 : 
-    # A %>% filter(CYCLE_NUMBER==19) %>%
-    #   ggplot(aes(x=PRES_ADJUSTED,y=VALUE))+facet_grid(.~VAR,scales="free")+
-    #   geom_line(aes(y=TM_11,color="trimmed mean k=11"))+
-    #   geom_line(aes(y=TM_9,color="trimmed mean k=9"))+
-    #   geom_line(aes(y=MM_11,color="moving median"))+
-    #   geom_line(aes(y=VALUE,color="observations"))+geom_point(aes(y=VALUE,color="observations"))+
-    #   coord_flip()+scale_x_reverse()
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    list_of_tibbles <- A %>%
+    residuals_data_wf_20m <- residuals_data_20m %>%
       group_by(CYCLE_NUMBER) %>%
-      group_split()
+      select(PRES_ADJUSTED, SCALE_RES_ROB,VALUE, VAR, CYCLE_NUMBER, LONGITUDE,
+             LATITUDE, TIME) %>%
+      pivot_wider(names_from = VAR, values_from = c(SCALE_RES_ROB,VALUE))
     
     
-    list_of_tibbles <- sample(list_of_tibbles,20)
+    # outlier calculation is on 40 m
+    downscaled_data_list <- lapply(cycles_list, downscale_data_fun_wo_out,bin_width = 40)
+    downscaled_data <- bind_rows(downscaled_data_list)
+    
+    # Prepare data for residuals calculation
+    residuals_data <- downscaled_data %>%
+      group_by(CYCLE_NUMBER) %>%
+      group_modify(~ .x %>%
+                     select(PRES_ADJUSTED, AOU, ABS_SAL, LATITUDE, LONGITUDE, TIME) %>%
+                     pivot_longer(
+                       cols = c(AOU, ABS_SAL),
+                       names_to = "VAR",
+                       values_to = "VALUE"
+                     ) %>%
+                     group_by(VAR) %>%
+                     mutate(
+                       MA_3 = rollmean(VALUE, 3, fill = NA),
+                       TM_9 = rollapply(VALUE, 9,
+                                        function(x) {
+                                          x_subset <- x[
+                                            x >= quantile(x, 0.2, na.rm = TRUE) &
+                                              x <= quantile(x, 0.8, na.rm = TRUE)
+                                          ]
+                                          if (length(x_subset) > 0) {
+                                            mean(x_subset, na.rm = TRUE)
+                                          } else {
+                                            NA
+                                          }
+                                        },
+                                        fill = NA
+                       ),
+                       ROB_RES = MA_3 - TM_9,
+                       ROB_RES_RAW = VALUE - TM_9
+                     ) %>%
+                     mutate(
+                       IQRN = IQR(ROB_RES_RAW, na.rm = TRUE) / 1.349,
+                       MEDIAN_RES = median(ROB_RES_RAW[ROB_RES_RAW != 0], na.rm = TRUE)
+                     ) %>%
+                     mutate(
+                       SCALE_RES_ROB = ifelse(
+                         ROB_RES_RAW == 0,
+                         0,
+                         (ROB_RES_RAW - MEDIAN_RES) / IQRN
+                       )
+                     )
+      ) %>%
+      ungroup()
     
     
-    # How to remove all those floats where one is clearly monotonic ? 
-    output <- lapply(list_of_tibbles, downscale_data_fun, b = 40)
-    output <- output %>% bind_rows()
     
-    B <- output %>% bind_rows()
+    # Detect outliers in downscaled data and pivot to wide format
+    residuals_data_wf <- residuals_data %>%
+      group_by(CYCLE_NUMBER) %>%
+      select(PRES_ADJUSTED, SCALE_RES_ROB,VALUE, VAR, CYCLE_NUMBER, LONGITUDE,
+             LATITUDE, TIME) %>%
+      pivot_wider(names_from = VAR, values_from = c(SCALE_RES_ROB,VALUE)) %>%
+      mutate(OUT_S = ifelse(abs(SCALE_RES_ROB_AOU) > cutoff & abs(SCALE_RES_ROB_ABS_SAL) > cutoff
+                            & SCALE_RES_ROB_AOU < 0, 1, 0))
     
-    prop_zero <- B %>% dplyr::select(AOU, SPIC, CYCLE_NUMBER, PRES_ADJUSTED,LATITUDE,LONGITUDE,TIME) %>%
+    
+    # Identify potential eddy events
+    potential_eddy_events <- residuals_data_wf %>%
+      filter(OUT_S == 1) %>%
+      select(CYCLE_NUMBER, PRES_ADJUSTED, LATITUDE,
+             LONGITUDE, TIME,SCALE_RES_ROB_ABS_SAL,
+             SCALE_RES_ROB_AOU,VALUE_ABS_SAL,VALUE_AOU) %>%
       unique() %>%
-      pivot_longer(cols = c("AOU", "SPIC"), names_to = "VAR", values_to = "VALUE") %>%
-      group_by(CYCLE_NUMBER, VAR) %>% summarize(zero_proportion = mean(VALUE == 0, na.rm = TRUE), .groups = 'drop')
-    
-    pivot_proportion <- prop_zero %>%
-      pivot_wider(names_from = VAR, values_from = zero_proportion)
-    
-    selected_cycles <- pivot_proportion %>%
-      filter(AOU <= 0.5, SPIC <= 0.5) %>%
-      pull(CYCLE_NUMBER)
+      filter(PRES_ADJUSTED >= 200, PRES_ADJUSTED <= 1000)
     
     
+    # Initialize columns to store the check results
+    potential_eddy_events$AOU_gradient_sign_change <- NA
+    potential_eddy_events$AOU_second_derivative_check <- NA
+    potential_eddy_events$ABS_SAL_gradient_sign_change <- NA
+    potential_eddy_events$ABS_SAL_second_derivative_check <- NA
     
-    carb_eddy.id <- B %>% filter(OUT.S == 0) %>% dplyr::select(CYCLE_NUMBER, PRES_ADJUSTED,LATITUDE,LONGITUDE,TIME) %>% unique()
-    
-    carb_eddy.id <- carb_eddy.id %>% filter(PRES_ADJUSTED <= 700) %>% filter(PRES_ADJUSTED >= 200)
-    
-    
-    carb_eddy.id <- carb_eddy.id %>%
-      inner_join(mld.df, by = "CYCLE_NUMBER") %>%
-      filter(PRES_ADJUSTED > MLD_DEPTH)
-    
-    const.vec <- c()
-    
-    for (i in 1:nrow(carb_eddy.id)){
-      spic <- data_df %>% filter(CYCLE_NUMBER==carb_eddy.id$CYCLE_NUMBER[i]) %>% dplyr::select(SPIC,PRES_ADJUSTED) %>% ungroup()
+    # Loop over each event
+    for (i in seq_len(nrow(potential_eddy_events))) {
+      cycle_num <- potential_eddy_events$CYCLE_NUMBER[i]
+      pres_level <- potential_eddy_events$PRES_ADJUSTED[i]
       
-      mean_spic_surf <- compute_mean_spic_50m(spic)
+      # Get the profile data at 20m resolution for the current cycle
+      profile_data <- residuals_data_wf_20m %>% filter(CYCLE_NUMBER == cycle_num)
       
+      # Perform checks for AOU
+      checks_aou <- perform_checks(profile_data, target_level = pres_level,
+                                   variable_name = "VALUE_AOU",
+                                   second_deriv = 0.001,window=60)
+      potential_eddy_events$AOU_gradient_sign_change[i] <- checks_aou$gradient_sign_change
+      potential_eddy_events$AOU_second_derivative_check[i] <- checks_aou$second_derivative_check
       
-      # The target pressure level
-      target_pressure <- carb_eddy.id$PRES_ADJUSTED[[i]]
-      
-      
-      
-      
-      # Find the value of spiciness at the pressure level closest to target pressure
-      closest_spic <- spic %>%
-        slice_min(abs(PRES_ADJUSTED - target_pressure), n = 1) %>%
-        pull(SPIC) 
-      
-      # If spic at outlying level is closer to surface value than the mean spic is of the surface value, anomaly is consistent
-      const.vec[i] <- ifelse( 
-        abs(closest_spic- mean_spic_surf)  < 
-          abs(mean_spic_at_min_max_levels(spic,target_pressure = target_pressure)-
-                mean_spic_surf) ,
-        1,0)
+      # Perform checks for ABS_SAL
+      checks_abs_sal <- perform_checks(profile_data, target_level = pres_level,
+                                       variable_name = "VALUE_ABS_SAL",second_deriv = 0.001,
+                                       window=60)
+      potential_eddy_events$ABS_SAL_gradient_sign_change[i] <- checks_abs_sal$gradient_sign_change
+      potential_eddy_events$ABS_SAL_second_derivative_check[i] <- checks_abs_sal$second_derivative_check
     }
     
-    carb_eddy.id$CONSISTENT_ANOM <- const.vec
     
-    # Split the detection dataframe in a list of dataframe with a separate dataframe for each cycle number :
-    list.carb_eddy <- carb_eddy.id %>% group_by(CYCLE_NUMBER) %>%
-      group_split()
+    filtered_events <- potential_eddy_events %>%
+      filter(
+        AOU_gradient_sign_change == TRUE,
+        ABS_SAL_gradient_sign_change == TRUE)
     
+
     
-    # Create an empty list to store plots
-    prof.plot <- list()
-    res.plot <- list()
-    list.plots <- list()
-    current_eddy.l <- list()
+   ##########################
+    # PLOTTING ROUTINE #####
+    ########################
+    # Get all unique cycle numbers from your data
+    all_cycles <- unique(residuals_data_wf_20m$CYCLE_NUMBER)
     
+    # Number of non-anomalous profiles to sample per float
+    num_samples <- 40
     
+    # Identify cycles without detected anomalies
+    non_anomalous_cycles <- setdiff(all_cycles, filtered_events$CYCLE_NUMBER)
     
+    # Randomly sample non-anomalous cycles
+    set.seed(123)  # For reproducibility
+    sampled_non_anomalous_cycles <- sample(non_anomalous_cycles, min(num_samples, length(non_anomalous_cycles)))
     
-    # Iterate over each cycle number in carb_eddy.id
-    for (i in seq_along(carb_eddy.id$CYCLE_NUMBER) ) {
-      current_cycle <- carb_eddy.id$CYCLE_NUMBER[i]
-      current_data <- A %>% filter(CYCLE_NUMBER == current_cycle)
-      current_eddy <- carb_eddy.id %>% filter(CYCLE_NUMBER == current_cycle)
-      pres_level <-  carb_eddy.id$PRES_ADJUSTED[i]
+    # Combine cycles with anomalies and sampled non-anomalous cycles
+    #cycles_to_plot <- c(filtered_events$CYCLE_NUMBER, sampled_non_anomalous_cycles)
+    
+    # If you only want to plot non detected cycles :
+    
+    cycles_to_plot <- non_anomalous_cycles
+    
+    # Initialize empty lists for plots
+    prof_plot <- list()
+    res_plot <- list()
+    list_plots <- list()
+    
+    # Plotting profiles and residuals
+    for (i in seq_along(cycles_to_plot)) {
+      current_cycle <- cycles_to_plot[i]
+      current_data_20m <- residuals_data_20m %>% filter(CYCLE_NUMBER == current_cycle)
+      current_data_40m <- residuals_data %>% filter(CYCLE_NUMBER == current_cycle)
+
       
-      # Filter data for AOU and SPIC
-      data_aou <- current_data %>% filter(VAR == "AOU")
-      data_spic <- current_data %>% filter(VAR == "SPIC")
+      # Check if the current cycle has a detected anomaly
+      anomaly_detected <- current_cycle %in% filtered_events$CYCLE_NUMBER
       
-      # Calculate derivatives for AOU and SPIC
-      data_aou_deriv <- calculate_derivative(data_aou)
-      data_spic_deriv <- calculate_derivative(data_spic)
+      # If an anomaly is detected, get the corresponding pressure level
+      if (anomaly_detected) {
+        current_eddy <- filtered_events %>% filter(CYCLE_NUMBER == current_cycle)
+        pres_level <- current_eddy$PRES_ADJUSTED
+      } else {
+        pres_level <- NA
+      }
       
-      # Check for sign change around the target level (100 meters around)
-      sign_change_detected_aou <- check_sign_change(data_aou_deriv, pres_level, check_depth = 100)
-      sign_change_detected_spic <- check_sign_change(data_spic_deriv, pres_level, check_depth = 100)
-      
-      # Add sign change detection results to current_eddy
-      current_eddy.l[[i]] <- current_eddy %>%
-        mutate(SIGN_AOU = sign_change_detected_aou,
-               SIGN_SPIC = sign_change_detected_spic)
-    }
-    
-    current_eddy.l <- current_eddy.l %>% bind_rows()  %>% ungroup() %>% dplyr::select(-bin) %>% unique()
-    # ONLY pick both SPIC and AOU change sign
-    eddy_dataframe <- current_eddy.l %>%
-      filter(SIGN_AOU == TRUE & SIGN_SPIC == TRUE)
-    
-    
-    
-    # Plotting profile
-    for (i in seq_along(eddy_dataframe$CYCLE_NUMBER)) {
-      current_cycle <- eddy_dataframe$CYCLE_NUMBER[i]
-      current_data <- A %>% filter(CYCLE_NUMBER == current_cycle)
-      current_eddy <- eddy_dataframe %>% filter(CYCLE_NUMBER == current_cycle)
-      pres_level <-  eddy_dataframe$PRES_ADJUSTED[i]
-      
-      df <- current_data
-      df.ds <- downscale_data_fun(df, b = 40)
-      
-      
-      prof.plot[[i]] <- current_data %>%
+      # Plotting profiles
+      prof_plot[[i]] <- current_data_20m %>%
         ggplot(aes(x = PRES_ADJUSTED, y = VALUE)) +
         facet_grid(. ~ VAR, scales = "free") +
         coord_flip() +
         scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40)) +
-        geom_line(aes(y = VALUE, color = "observed values")) +
-        geom_point(aes(y = VALUE, color = "observed values"), size = .3) +
-        geom_point(aes(y = TM_11, color = "Trimmed Mean (k=9)"), size = .3) +
-        geom_line(aes(y = TM_11, color = "Trimmed Mean (k=9)")) +
+        geom_line(aes(y = VALUE, color = "Observed Values")) +
+        geom_line(aes(y = TM_9, color = "Trimmed Mean (k=9)")) +
         theme_bw() +
-        labs(x = "Adjusted pressure (dbar)", y = "") +
-        theme(legend.position = "bottom") +
-        geom_vline(xintercept = current_eddy$MLD_DEPTH[1], color = "red", alpha = .3, size = 1) 
-        # This line currently displays all PRES_ADJUSTED levels where an anomaly is detected but this needs to be
-        # modified so that the green lines are only shown if the SPIKE test is passed successfully. 
-        #geom_vline(xintercept = current_eddy$PRES_ADJUSTED, color = "darkgreen", alpha = .3, size = 1)
+        labs(x = "Adjusted Pressure (dbar)", y = "") +
+        theme(legend.position = "bottom")
       
-      df.ds <- df.ds %>% ungroup() %>% dplyr::select(AOU, SPIC, PRES_ADJUSTED) %>%
-        pivot_longer(cols = !PRES_ADJUSTED, names_to = "VAR", values_to = "VALUE")
+      # Add vertical line if an anomaly is detected
+      if (anomaly_detected) {
+        prof_plot[[i]] <- prof_plot[[i]] +
+          geom_vline(xintercept = pres_level, color = "darkgreen", alpha = 0.3, size = 1)
+      }
       
+      # Prepare data for residuals plot
       hline_data <- data.frame(
-        VAR = c("AOU", "AOU", "SPIC", "SPIC"),
+        VAR = c("AOU", "AOU", "ABS_SAL", "ABS_SAL"),
         hline = c(-2, 2, -2, 2),
         label = c("-2 sigma", "+2 sigma", "-2 sigma", "+2 sigma")
       )
       
       # Plotting residuals
-      res.plot[[i]] <- df %>%
-        ggplot(aes(x = PRES_ADJUSTED, y = SCALE.RES.ROB)) +
-        scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40)) +
+      res_plot[[i]] <- current_data_40m %>%
+        ggplot(aes(x = PRES_ADJUSTED, y = SCALE_RES_ROB)) +
+        scale_x_reverse(limits = c(1200, 0), breaks = seq(0, 1200, by = 40)) +
         facet_grid(. ~ VAR, scales = "free") +
         coord_flip() +
         theme_bw() +
-        geom_point(data = df.ds, aes(x = PRES_ADJUSTED, y = VALUE, color = "downscaled residuals to 40 meters")) +
-        labs(x = "Adjusted pressure (dbar)", y = "") +
+        geom_point() +
+        labs(x = "Adjusted Pressure (dbar)", y = "") +
         geom_hline(data = hline_data, aes(yintercept = hline, color = label), inherit.aes = TRUE) +
-        scale_color_manual(name = "Threshold", values = c("-3 sigma" = "red", "+3 sigma" = "red", "-2 sigma" = "blue", "+2 sigma" = "blue")) +
-        theme(legend.position = "bottom") +
-        geom_vline(xintercept = current_eddy$MLD_DEPTH[i], color = "red", alpha = .3, size = 1)
+        scale_color_manual(name = "Threshold", values = c("-2 sigma" = "blue", "+2 sigma" = "blue")) +
+        theme(legend.position = "bottom")
       
-        #geom_vline(xintercept = current_eddy$PRES_ADJUSTED, color = "darkgreen", alpha = .3, size = 1) +
+      # Add vertical line if an anomaly is detected
+      if (anomaly_detected) {
+        res_plot[[i]] <- res_plot[[i]] +
+          geom_vline(xintercept = pres_level, color = "darkgreen", alpha = 0.3, size = 1)
+      }
       
-      annotation_text <- paste("Cycle Number: ", current_cycle,
-                               "\nFloat ID (WMO): ", wmo,
-                               "\nLongitude: ", current_eddy$LONGITUDE,
-                               "\nLatitude: ", current_eddy$LATITUDE,
-                               "\nTime: ", format(as.POSIXct(current_eddy$TIME, origin = "1970-01-01"), "%Y-%m-%d"))
+      # Annotation text
+      annotation_text <- paste(
+        "Cycle Number:", current_cycle,
+        "\nFloat ID (WMO):", wmo,
+        "\nLongitude:", current_data_20m$LONGITUDE[1],
+        "\nLatitude:", current_data_20m$LATITUDE[1],
+        "\nTime:", format(as.POSIXct(current_data_20m$TIME[1], origin = "1970-01-01"), "%Y-%m-%d"),
+        "\nAnomaly Detected:", ifelse(anomaly_detected, "Yes", "No")
+      )
       
       # Combine plots with annotation
-      combined_plot <- ggarrange(prof.plot[[i]], res.plot[[i]], common.legend = FALSE, legend = "bottom", nrow = 2)
-      combined_plot <- annotate_figure(combined_plot, top = text_grob(annotation_text, face = "bold", size = 10))
+      combined_plot <- ggarrange(
+        prof_plot[[i]],
+        res_plot[[i]],
+        common.legend = FALSE,
+        legend = "bottom",
+        nrow = 2
+      )
+      combined_plot <- annotate_figure(
+        combined_plot,
+        top = text_grob(annotation_text, face = "bold", size = 10)
+      )
       
-      list.plots[[i]] <- combined_plot
+      list_plots[[i]] <- combined_plot
     }
-    
-    if (length(list.plots) > 0) {
-      dir <- paste0("/data/GLOBARGO/figures/SensitivityEstimationNotDet/", wmo)
+      
+      
+    # Save plots to files
+    if (length(list_plots) > 0) {
+      dir <- paste0("/data/GLOBARGO/figures/EddySubductionFiguresSensitivityEstimation/", wmo)
       if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE)
       }
       
-      for (k in seq_along(list.plots) ) {
-        cycle_number <- eddy_dataframe$CYCLE_NUMBER[k]
+      for (k in seq_along(list_plots)) {
+        cycle_number <- cycles_to_plot[k]
         file_name <- paste0(dir, "/", wmo, "_plot_cycle_", cycle_number, ".png")
-        ggsave(file_name, list.plots[[k]], width = 10, height = 10)
+        ggsave(file_name, list_plots[[k]], width = 10, height = 10)
       }
     }
+    filtered_events$WMO <- wmo
+    # Store the eddy events in the list
+    detected_events_list[[j]] <- filtered_events
     
-    eddy_dataframe$WMO <- wmo
-    detected.events.list[[j]] <- eddy_dataframe
     
   }, silent = TRUE)
-}
-
-
-
-
-# Note on the sensitivity increase
-# If we don't downscale prior to the computation of residuals : 
-#For wmo5904677 we have that carb_eddy.id$CYCLE_NUMBER %>% unique()
-# [1]  4  5 13 16 18 19 20 21 23 25 26 28 32 34 35 38 40 46 47 49 50 51 53 55 57 59
-
-sens_df <- read_csv("/data/GLOBARGO/data/classification_results_sensitivity.csv")
-sens_df$WMO %>% unique() %>% length()  # 42 random profiles
-
-proportion_df <- sens_df %>%
-  dplyr::group_by(Category) %>%
-  dplyr::summarize(Proportion = n() ) %>%
-  dplyr::ungroup()# Category 0 True Negative, 1 True Positive, 2 False Negative
-# Estimated False neg rate : 
-  482/(482+12)
-
-# 12 False negative :
-(5/494)
-0.01*100000  
-1000/(7000+1000)
-sens_df %>% filter(Category == 2)
+}    
+    
