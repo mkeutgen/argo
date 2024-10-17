@@ -13,8 +13,9 @@ library(pracma)
 conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
 
-# STILL TO DO : make sure first derivative works
-# Implement a test based on 2nd derivative if it's larger than 0.01 for AOU. 
+
+# Source the functions
+source(file = "/data/GLOBARGO/src/01annex_fun_det_algo.R")
 
 
 # Read the list of WMO IDs
@@ -27,9 +28,7 @@ detected_events_list <- list()
 cutoff <- 1.96
 resolution <- 40
 window <- 60 
-# different wmos tried
-wmo <- 5904677 
-wmo <- 2902177
+
 # Main processing loop over each WMO ID
 for (j in seq_along(wmolist)) {
   try({
@@ -370,7 +369,7 @@ for (j in seq_along(wmolist)) {
     
     # Save plots to files
     if (length(list_plots) > 0) {
-      dir <- paste0("/data/GLOBARGO/figures/EddySubductionFiguresSalinityVarV4/", wmo)
+      dir <- paste0("/data/GLOBARGO/figures/EddySubductionFiguresSalinityVarV5/", wmo)
       if (!dir.exists(dir)) {
         dir.create(dir, recursive = TRUE)
       }
@@ -378,7 +377,7 @@ for (j in seq_along(wmolist)) {
       for (k in seq_along(list_plots)) {
         cycle_number <- filtered_events$CYCLE_NUMBER[k]
         file_name <- paste0(dir, "/", wmo, "_plot_cycle_", cycle_number, ".png")
-        ggsave(file_name, list_plots[[k]], width = 10, height = 10)
+        ggsave(file_name, list_plots[[k]], width = 10, height = 12)
       }
     }
     filtered_events$WMO <- wmo
@@ -391,9 +390,5 @@ for (j in seq_along(wmolist)) {
 detected.events.df <- detected_events_list %>% bind_rows()
 
 write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_abs_sal_var_v4.csv")
+write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_abs_sal_var_v4_copy_17oct.csv")
 
-# ggsave(combined_plot,filename = "/data/GLOBARGO/figures/InterestingFigures/wmo6901767_abs_sal_res40.png",width = 10,height = 10)
-ggsave(combined_plot,filename = "/data/GLOBARGO/figures/InterestingFigures/wmo6901767_abs_sal_res20.png",width = 10,height = 10)
-
-
-detected.events.df

@@ -39,7 +39,6 @@ df_not_in_spic # 3792 observations
 df_not_in_spic %>% select(WMO,CYCLE_NUMBER) %>% unique() # 3,378 profiles in ABS_SAL But not in SPIC
 
 
-
 # Step 2: Define the source and destination folder paths
 source_folder <- "/data/GLOBARGO/figures/EddySubductionFiguresSalinityVarV4"
 destination_folder <- "/data/GLOBARGO/figures/EddySubductionFiguresInSalinityButNotSpic"

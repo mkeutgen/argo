@@ -44,11 +44,8 @@ df_partial_salinity_class <- df_partial_salinity_class %>%
 
 df_partial_salinity_class$CYCLE_NUMBER <- df_partial_salinity_class$Cycle
 
-df_spic_class$WMO <- df_spic_class$WMO %>% as.character()
-
-# Join two datasets, assuming that if a row is common to spic and partial_salinity in terms of their unique
-# combination of WMO and Cycle, partial_salinity should be prefered :
-
+df_partial_salinity_class$WMO <- as.numeric(df_partial_salinity_class$WMO )
+df_spic_class$WMO             <- as.numeric(df_spic_class$WMO             )    
 
 # Perform the join, 
 df_combined <- bind_rows(df_partial_salinity_class, df_spic_class) %>% select(WMO,CYCLE_NUMBER,Category)
@@ -61,6 +58,8 @@ df_combined <- bind_rows(df_partial_salinity_class, df_spic_class) %>% select(WM
 # Check for duplicates in df_abs_sal based on WMO and CYCLE_NUMBER
 df_abs_sal_unique <- df_abs_sal %>%
   distinct(WMO, CYCLE_NUMBER, .keep_all = TRUE)
+
+df_abs_sal_unique$CYCLE_NUMBER
 
 # Perform the join again with the unique rows
 df_complete <- df_combined %>%
