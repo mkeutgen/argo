@@ -290,7 +290,6 @@ for (j in seq_along(wmolist)) {
 #    # Add WMO ID to the eddy events
 #    eddy_events$WMO <- wmo
     
-<<<<<<< HEAD
     # **Plotting Module**
     
     # Initialize empty lists for plots
@@ -381,98 +380,6 @@ for (j in seq_along(wmolist)) {
         ggsave(file_name, list_plots[[k]], width = 10, height = 12)
       }
     }
-=======
-#    # **Plotting Module**
-#    
-#    # Initialize empty lists for plots
-#    prof_plot <- list()
-#    res_plot <- list()
-#    list_plots <- list()
-#    
-#    # Plotting profiles and residuals
-#    for (i in seq_along(filtered_events$CYCLE_NUMBER)) {
-#      current_cycle <- filtered_events$CYCLE_NUMBER[i]
-#      current_data_20m <- residuals_data_20m %>% filter(CYCLE_NUMBER == current_cycle)
-#      current_data_40m <- residuals_data %>% filter(CYCLE_NUMBER == current_cycle)
-#      current_eddy <- filtered_events %>% filter(CYCLE_NUMBER == current_cycle)
-#      pres_level <- filtered_events$PRES_ADJUSTED[i]
-#      
-#  
-#      
-#      # Plotting profiles
-#      prof_plot[[i]] <- current_data_20m %>%
-#        ggplot(aes(x = PRES_ADJUSTED, y = VALUE)) +
-#        facet_grid(. ~ VAR, scales = "free") +
-#        coord_flip() +
-#        scale_x_reverse(limits = c(1200, 0), breaks = seq(0, 1200, by = 40)) +
-#        geom_line(aes(y = VALUE, color = "Observed Values")) +
-#        geom_line(aes(y = TM_9, color = "Trimmed Mean (k=9)")) +
-#        theme_bw() +
-#        labs(x = "Adjusted Pressure (dbar)", y = "") +
-#        theme(legend.position = "bottom") +
-#        geom_vline(xintercept = current_eddy$PRES_ADJUSTED, color = "darkgreen", alpha = 0.3, size = 1)
-#      
-#      # Prepare data for residuals plot
-#
-#      hline_data <- data.frame(
-#        VAR = c("AOU", "AOU", "ABS_SAL", "ABS_SAL"),
-#        hline = c(-2, 2, -2, 2),
-#        label = c("-2 sigma", "+2 sigma", "-2 sigma", "+2 sigma")
-#      )
-#      
-#      # Plotting residuals
-#      res_plot[[i]] <- current_data_40m %>%
-#        ggplot(aes(x = PRES_ADJUSTED, y = SCALE_RES_ROB)) +
-#        scale_x_reverse(limits = c(1200, 0), breaks = seq(0, 1200, by = 40)) +
-#        facet_grid(. ~ VAR, scales = "free") +
-#        coord_flip() +
-#        theme_bw() +
-#        geom_point() +
-#        labs(x = "Adjusted Pressure (dbar)", y = "") +
-#        geom_hline(data = hline_data, aes(yintercept = hline, color = label), inherit.aes = TRUE) +
-#        scale_color_manual(name = "Threshold", values = c("-2 sigma" = "blue", "+2 sigma" = "blue")) +
-#        theme(legend.position = "bottom") +
-#        geom_vline(xintercept = current_eddy$PRES_ADJUSTED, color = "darkgreen", alpha = 0.3, size = 1)
-#
-#      # Annotation text
-#      annotation_text <- paste(
-#        "Cycle Number:", current_cycle,
-#        "\nFloat ID (WMO):", wmo,
-#        "\nLongitude:", current_eddy$LONGITUDE,
-#        "\nLatitude:", current_eddy$LATITUDE,
-#        "\nTime:", format(as.POSIXct(current_eddy$TIME, origin = "1970-01-01"), "%Y-%m-%d")
-#      )
-#      
-#      # Combine plots with annotation
-#      combined_plot <- ggarrange(
-#        prof_plot[[i]],
-#        res_plot[[i]],
-#        common.legend = FALSE,
-#        legend = "bottom",
-#        nrow = 2
-#      )
-#      combined_plot <- annotate_figure(
-#        combined_plot,
-#        top = text_grob(annotation_text, face = "bold", size = 10)
-#      )
-#      
-#      list_plots[[i]] <- combined_plot
-#    }
-#    
-#    # Save plots to files
-#    if (length(list_plots) > 0) {
-#      dir <- paste0("/data/GLOBARGO/figures/EddySubductionFiguresSalinityVarV4/", wmo)
-#      if (!dir.exists(dir)) {
-#        dir.create(dir, recursive = TRUE)
-#      }
-#      
-#      for (k in seq_along(list_plots)) {
-#        cycle_number <- filtered_events$CYCLE_NUMBER[k]
-#        file_name <- paste0(dir, "/", wmo, "_plot_cycle_", cycle_number, ".png")
-#        ggsave(file_name, list_plots[[k]], width = 10, height = 10)
-#      }
-#    }
->>>>>>> fe665ebdeb2899602270236c1ff3b2ae79de7b7d
     filtered_events$WMO <- wmo
     # Store the eddy events in the list
     detected_events_list[[j]] <- filtered_events
@@ -482,6 +389,5 @@ for (j in seq_along(wmolist)) {
 # Write output 
 detected.events.df <- detected_events_list %>% bind_rows()
 
-write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_abs_sal_var_v4.csv")
-write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_abs_sal_var_v4_copy_17oct.csv")
+write_csv(detected.events.df, "/data/GLOBARGO/data/detected_events_abs_sal_var_v5.csv")
 

@@ -15,7 +15,7 @@ conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
 
 # Load detected events :
-df_abs_sal <- read_csv("/data/GLOBARGO/data/detected_events_abs_sal_var_v4.csv")
+df_abs_sal <- read_csv("/data/GLOBARGO/data/detected_events_abs_sal_var_v5.csv")
 df_spic <- read_csv("/data/GLOBARGO/data/detected_events_sens_and_spec_incr.csv")
 
 # Classified datasets in spiciness
@@ -35,7 +35,8 @@ df_not_in_sal <- df_spic %>%
   anti_join(df_abs_sal, by = c("WMO", "CYCLE_NUMBER"))
 
 
-df_not_in_spic # 3792 observations
+
+
 df_not_in_spic %>% select(WMO,CYCLE_NUMBER) %>% unique() # 3,378 profiles in ABS_SAL But not in SPIC
 
 
@@ -150,3 +151,52 @@ df_spic_anomalies_with_files <- df_spic_anomalies %>%
 # Check that they are all contained in the df_abs_sal df : 
 df_spic_anomalies_with_files %>% select(WMO,CYCLE_NUMBER)
 df_abs_sal %>% select(WMO,CYCLE_NUMBER)
+
+
+####################
+# DEEP ANOMALIES ###
+##
+
+df_deep <- df_not_in_spic %>% filter(PRES_ADJUSTED >= 800)
+
+# Step 2: Define the source and destination folder paths
+source_folder <- "/data/GLOBARGO/figures/EddySubductionFiguresSalinityVarV5"
+destination_folder <- "/data/GLOBARGO/figures/DeepEddySubductionFiguresInSalinity"
+
+# Create the destination folder if it doesn't exist
+if (!dir_exists(destination_folder)) {
+  dir_create(destination_folder)
+}
+
+# Step 3: Loop through the rows in df_not_in_spic and copy files
+# Step 3: Loop through the rows in df_not_in_spic and copy files preserving the folder structure
+df_deep %>%
+  rowwise() %>%
+  mutate(
+    # Construct the source subfolder path
+    source_subfolder = file.path(source_folder, as.character(WMO)),
+    # Construct the source file path
+    source_file = file.path(
+      source_subfolder, 
+      paste0(WMO, "_plot_cycle_", CYCLE_NUMBER, ".png")
+    ),
+    # Construct the destination subfolder path
+    destination_subfolder = file.path(destination_folder, as.character(WMO)),
+    # Construct the destination file path
+    destination_file = file.path(
+      destination_subfolder, 
+      paste0(WMO, "_plot_cycle_", CYCLE_NUMBER, ".png")
+    )
+  ) %>%
+  # Copy files and create subfolders if they don't exist
+  do({
+    if (file_exists(.$source_file)) {
+      if (!dir_exists(.$destination_subfolder)) {
+        dir_create(.$destination_subfolder)
+      }
+      file_copy(.$source_file, .$destination_file, overwrite = TRUE)
+    }
+    NULL
+  })
+
+

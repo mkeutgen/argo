@@ -28,14 +28,24 @@ df_argo <- read_csv("/data/GLOBARGO/data/argo_profiles_df.csv")
 
 
 # Load detected events :
-df_abs_sal <- read_csv("/data/GLOBARGO/data/detected_events_abs_sal_var_v4.csv")
+df_abs_sal <- read_csv("/data/GLOBARGO/data/detected_events_abs_sal_var_v5.csv")
 df_spic <- read_csv("/data/GLOBARGO/data/detected_events_sens_and_spec_incr.csv")
 
 
 
 # Classified datasets
+# Spiciness 
 df_spic_class <- read_csv("/data/GLOBARGO/data/anom_in_spic_and_sal_cat1_and2.csv")
+# Salinity
 df_partial_salinity_class <- read_csv("/data/GLOBARGO/data/classification_results_salinity_fig_not_in_spic.csv")
+# Deep anomalies
+df_deep <- read_csv("/data/GLOBARGO/data/deep_classification.csv")
+
+df_deep$WMO <- gsub("_plot", "", df_deep$WMO)
+
+df_deep$WMO <- df_deep$WMO %>% as.numeric()
+
+df_deep$CYCLE_NUMBER <- df_deep$Cycle
 
 
 df_partial_salinity_class <- df_partial_salinity_class %>%
@@ -47,12 +57,20 @@ df_partial_salinity_class$CYCLE_NUMBER <- df_partial_salinity_class$Cycle
 df_partial_salinity_class$WMO <- as.numeric(df_partial_salinity_class$WMO)
 df_spic_class$WMO             <- as.numeric(df_spic_class$WMO)    
 
-# Join two datasets, assuming that if a row is common to spic and partial_salinity in terms of their unique
-# combination of WMO and Cycle, partial_salinity should be prefered :
 
 
 # Perform the join, 
 df_combined <- bind_rows(df_partial_salinity_class, df_spic_class) %>% select(WMO,CYCLE_NUMBER,Category)
+
+# Join df_combined with df_deep, assuming that if a row is common to spic and partial_salinity in terms of their unique
+# combination of WMO and Cycle, df_deep should be prefered :
+
+# Remove rows from df_combined that have the same WMO and CYCLE_NUMBER as in df_deep
+df_combined_filtered <- df_combined %>%
+  anti_join(df_deep, by = c("WMO", "CYCLE_NUMBER"))
+
+# Combine the filtered df_combined with df_deep
+df_final <- bind_rows(df_deep, df_combined_filtered)
 
 
 # Next we wish to complete this dataframe by retriving
@@ -65,7 +83,7 @@ df_abs_sal_unique <- df_abs_sal %>%
 
 
 # Perform the join again with the unique rows
-df_complete <- df_combined %>%
+df_complete <- df_final %>%
   left_join(df_abs_sal_unique %>% 
               select(WMO, CYCLE_NUMBER, LATITUDE, LONGITUDE, TIME), 
             by = c("WMO", "CYCLE_NUMBER"))

@@ -23,8 +23,7 @@ source(file = "/data/GLOBARGO/src/02AnnexDetFunBBP700.R")
 
 
 # Read the manually classified dataframe
-classified_df <- read.csv("FILEPATH")
-classified_df$WMO <- gsub("_plot", "", classified_df$WMO)
+classified_df <- read.csv("/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
 
 #Create two distinct df with high and low confidence subduction events
 cat1_events <- classified_df %>% filter(Category==1)
