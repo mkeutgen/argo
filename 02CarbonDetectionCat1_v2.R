@@ -43,14 +43,14 @@ resolution <- 40
 window <- 60 
 
 # Main processing loop over each WMO ID
-for (j in seq_along(wmolist)) {
+for (j in seq_along(wmo_cat1)) {
   try({
     #
     #5906635
     
     
     # Get current WMO ID
-    wmo <- wmolist[j]
+    wmo <- wmo_cat1[j]
     
     
     # Restrict the cycle_number to the one found by the Detection Algorithm on AOU
@@ -76,7 +76,7 @@ for (j in seq_along(wmolist)) {
     
     # Select only the cycle number which are anomalous for efficiency
     
-    float_data <- float_data %>% filter(data_df$CYCLE_NUMBER %in% cycle_number)
+    float_data <- float_data %>% filter(float_data$CYCLE_NUMBER %in% cycle_number)
     
     
     # Preprocess data: calculate additional oceanographic parameters

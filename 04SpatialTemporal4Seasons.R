@@ -248,28 +248,30 @@ ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_proport
 
 # Fit the GAM models for each season
 gam_djf <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 300),
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
   family = binomial(link = "logit"),
   data = merged_counts_djf,
   method = "REML"
 )
 
+gam_djf %>% summary()
+
 gam_mam <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 300),
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
   family = binomial(link = "logit"),
   data = merged_counts_mam,
   method = "REML"
 )
 
 gam_jja <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 300),
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
   family = binomial(link = "logit"),
   data = merged_counts_jja,
   method = "REML"
 )
 
 gam_son <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 300),
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
   family = binomial(link = "logit"),
   data = merged_counts_son,
   method = "REML"
@@ -451,7 +453,7 @@ combined_proportion_maps <- prop_map_djf + prop_map_mam + prop_map_jja + prop_ma
   plot_annotation(title = "Proportion of Subduction Events Across Seasons (Discontinuous Scale)")
 
 # Save combined figure
-ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_proportion_maps_discontinuous.png", 
+ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_proportion_maps_discontinuous_k300.png", 
        plot = combined_proportion_maps, width = 15, height = 12)
 
 

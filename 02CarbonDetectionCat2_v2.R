@@ -30,7 +30,7 @@ cat1_events <- classified_df %>% filter(Category==1)
 cat2_events <- classified_df %>% filter(Category==2) 
 
 # Create a vector that contains the floats the detection algorithm is gonna be looped on
-wmo_cat2 <- cat1_events$WMO %>% unique()
+wmo_cat2 <- cat2_events$WMO %>% unique()
 
 
 
@@ -76,7 +76,7 @@ for (j in seq_along(wmo_cat2)) {
     
     # Select only the cycle number which are anomalous for efficiency
     
-    float_data <- float_data %>% filter(data_df$CYCLE_NUMBER %in% cycle_number)
+    float_data <- float_data %>% filter(float_data$CYCLE_NUMBER %in% cycle_number)
     
     
     # Preprocess data: calculate additional oceanographic parameters
