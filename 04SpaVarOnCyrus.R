@@ -350,12 +350,13 @@ fit_and_plot_gam <- function(k_value, season, merged_counts, prediction_grid, x_
 }
 
 # Vary k for Winter/Early Spring (DJFMAM)
-k_values <- c(50, 100, 150)  # Try different values of k
+k_values <- c(50, 100, 1000)  # Try different values of k
 
 for (k in k_values) {
   fit_and_plot_gam(k, "Winter/Early Spring", merged_counts_winter, prediction_grid_winter, x_limits_winter, y_limits_winter, "figures/TimeSpaceVar/gam_winter")
 }
 
+µ
 # Vary k for Late Spring/Summer (JJASON)
 for (k in k_values) {
   fit_and_plot_gam(k, "Late Spring/Summer", merged_counts_summer, prediction_grid_summer, x_limits_summer, y_limits_summer, "/data/GLOBARGO/figures/TimeSpaceVar/gam_summer")
@@ -383,7 +384,7 @@ fit_gam_and_evaluate <- function(k_value, data, season) {
 }
 
 # Define a range of k values to test
-k_values <- seq(50, 150, by = 10)  # You can modify this range as needed
+k_values <- seq(100, 1000, by = 100)  # You can modify this range as needed
 
 # Fit models for Winter/Early Spring (DJFMAM)
 results_winter <- lapply(k_values, function(k) fit_gam_and_evaluate(k, merged_counts_winter, "Winter"))
