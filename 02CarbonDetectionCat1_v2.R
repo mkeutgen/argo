@@ -436,9 +436,9 @@ for (j in seq_along(wmo_cat1)) {
 }
 
 # Write output 
-detected.events.df.carbon <- detected_events_list %>% bind_rows()
+detected.events.df.carbon <- detected_events_list_carbon %>% bind_rows()
 
-write_csv(detected.events.df,"/data/GLOBARGO/data/detected_events_unique_with_carbon_cat1.csv")
+write_csv(detected.events.df.carbon,"/data/GLOBARGO/data/detected_events_unique_with_carbon_cat1.csv")
 
 
 

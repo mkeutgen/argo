@@ -1,4 +1,9 @@
 # Load necessary libraries
+library(conflicted)
+# Resolve function conflicts in favor of dplyr
+conflict_prefer("select", "dplyr")
+conflict_prefer("filter", "dplyr")
+
 library(tidyverse)
 library(robustbase)
 library(gsw)
@@ -7,7 +12,6 @@ library(oce)
 library(ggpubr)
 library(segmented)
 library(dplyr)
-library(conflicted)
 library(pracma)
 library(fs)
 
@@ -19,6 +23,13 @@ library(viridis)
 library(sp)
 library(spdep)
 library(mgcv)
+
+library(patchwork)
+
+# first investigate structure of data
+df_complete_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
+df_complete_clean %>% head()
+df_argo_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_argo_loc.csv")
 
 
 
@@ -135,7 +146,7 @@ plot_kde(kde_son_df, "Density of SON Argo Profiles", "/data/GLOBARGO/figures/Tim
 
 # Bin data
 # Define bin size for longitude and latitude
-bin_size <- 5
+bin_size <- 10
 longitude_bins <- seq(floor(min(df_argo_clean$LONGITUDE)), ceiling(max(df_argo_clean$LONGITUDE)), by = bin_size)
 latitude_bins <- seq(floor(min(df_argo_clean$LATITUDE)), ceiling(max(df_argo_clean$LATITUDE)), by = bin_size)
 
@@ -241,170 +252,31 @@ combined_proportion_maps <- prop_map_djf + prop_map_mam + prop_map_jja + prop_ma
   plot_annotation(title = "Proportion of Subduction Events Across Seasons")
 
 # Save combined figure
-ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_proportion_maps.png", plot = combined_proportion_maps, width = 15, height = 12)
+ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_proportion_maps_res10.png", plot = combined_proportion_maps, width = 15, height = 12)
+
+
+threshold <- 50  # Example threshold
+filtered_counts_djf <- merged_counts_djf %>%
+  filter(count_total >= threshold)  # Filter out low count cells
+
+filtered_counts_mam <- merged_counts_mam %>%
+  filter(count_total >= threshold)  # Filter out low count cells
+
+filtered_counts_jja <- merged_counts_jja %>%
+  filter(count_total >= threshold)  # Filter out low count cells
+
+filtered_counts_son <- merged_counts_son %>%
+  filter(count_total >= threshold)  # Filter out low count cells
 
 
 
-
-# Fit the GAM models for each season
-gam_djf <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
-  family = binomial(link = "logit"),
-  data = merged_counts_djf,
-  method = "REML"
-)
-
-gam_djf %>% summary()
-
-gam_mam <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
-  family = binomial(link = "logit"),
-  data = merged_counts_mam,
-  method = "REML"
-)
-
-gam_jja <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
-  family = binomial(link = "logit"),
-  data = merged_counts_jja,
-  method = "REML"
-)
-
-gam_son <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
-  family = binomial(link = "logit"),
-  data = merged_counts_son,
-  method = "REML"
-)
-
-# Create prediction grids for each season
-create_prediction_grid <- function(merged_counts) {
-  lon_seq <- seq(min(merged_counts$lon_bin), max(merged_counts$lon_bin), by = 1)
-  lat_seq <- seq(min(merged_counts$lat_bin), max(merged_counts$lat_bin), by = 1)
-  expand.grid(lon_bin = lon_seq, lat_bin = lat_seq)
-}
-
-# Prediction grids
-prediction_grid_djf <- create_prediction_grid(merged_counts_djf)
-prediction_grid_mam <- create_prediction_grid(merged_counts_mam)
-prediction_grid_jja <- create_prediction_grid(merged_counts_jja)
-prediction_grid_son <- create_prediction_grid(merged_counts_son)
-
-# Predict the smoothed proportions for each season
-prediction_grid_djf$proportion <- predict(gam_djf, newdata = prediction_grid_djf, type = "response")
-prediction_grid_mam$proportion <- predict(gam_mam, newdata = prediction_grid_mam, type = "response")
-prediction_grid_jja$proportion <- predict(gam_jja, newdata = prediction_grid_jja, type = "response")
-prediction_grid_son$proportion <- predict(gam_son, newdata = prediction_grid_son, type = "response")
-
-# Remove NA values
-prediction_grid_djf <- prediction_grid_djf %>% filter(!is.na(proportion))
-prediction_grid_mam <- prediction_grid_mam %>% filter(!is.na(proportion))
-prediction_grid_jja <- prediction_grid_jja %>% filter(!is.na(proportion))
-prediction_grid_son <- prediction_grid_son %>% filter(!is.na(proportion))
-
-# Create GAM maps without saving them to files directly
-gam_map_djf <- ggplot() +
-  geom_tile(data = prediction_grid_djf, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid_djf, aes(x = lon_bin, y = lat_bin, z = proportion), color = "white", alpha = 0.3) +
-  geom_sf(data = world, fill = "gray80", color = "gray80") +
-  coord_sf(xlim = range(prediction_grid_djf$lon_bin), ylim = range(prediction_grid_djf$lat_bin), expand = FALSE) +
-  labs(title = "Estimated Proportion of Anomalous Argo Profiles (DJF)", x = "Longitude", y = "Latitude", fill = "Proportion") +
-  scale_fill_viridis_c() +
-  theme_minimal()
-
-gam_map_mam <- ggplot() +
-  geom_tile(data = prediction_grid_mam, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid_mam, aes(x = lon_bin, y = lat_bin, z = proportion), color = "white", alpha = 0.3) +
-  geom_sf(data = world, fill = "gray80", color = "gray80") +
-  coord_sf(xlim = range(prediction_grid_mam$lon_bin), ylim = range(prediction_grid_mam$lat_bin), expand = FALSE) +
-  labs(title = "Estimated Proportion of Anomalous Argo Profiles (MAM)", x = "Longitude", y = "Latitude", fill = "Proportion") +
-  scale_fill_viridis_c() +
-  theme_minimal()
-
-gam_map_jja <- ggplot() +
-  geom_tile(data = prediction_grid_jja, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid_jja, aes(x = lon_bin, y = lat_bin, z = proportion), color = "white", alpha = 0.3) +
-  geom_sf(data = world, fill = "gray80", color = "gray80") +
-  coord_sf(xlim = range(prediction_grid_jja$lon_bin), ylim = range(prediction_grid_jja$lat_bin), expand = FALSE) +
-  labs(title = "Estimated Proportion of Anomalous Argo Profiles (JJA)", x = "Longitude", y = "Latitude", fill = "Proportion") +
-  scale_fill_viridis_c() +
-  theme_minimal()
-
-gam_map_son <- ggplot() +
-  geom_tile(data = prediction_grid_son, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid_son, aes(x = lon_bin, y = lat_bin, z = proportion), color = "white", alpha = 0.3) +
-  geom_sf(data = world, fill = "gray80", color = "gray80") +
-  coord_sf(xlim = range(prediction_grid_son$lon_bin), ylim = range(prediction_grid_son$lat_bin), expand = FALSE) +
-  labs(title = "Estimated Proportion of Anomalous Argo Profiles (SON)", x = "Longitude", y = "Latitude", fill = "Proportion") +
-  scale_fill_viridis_c() +
-  theme_minimal()
-
-# Combine GAM maps into a single figure using patchwork
-combined_gam_maps <- gam_map_djf + gam_map_mam + gam_map_jja + gam_map_son + 
-  plot_layout(ncol = 2, nrow = 2) + 
-  plot_annotation(title = "GAM Estimated Proportion of Anomalous Argo Profiles Across Seasons")
-
-# Save combined figure
-ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_gam_maps.png", plot = combined_gam_maps, width = 15, height = 12)
-
-
-# Define a unified color scale for the GAM maps
-color_scale_gam <- scale_fill_viridis_c(name = "Proportion", limits = c(0, max(c(prediction_grid_djf$proportion, 
-                                                                                 prediction_grid_mam$proportion, 
-                                                                                 prediction_grid_jja$proportion, 
-                                                                                 prediction_grid_son$proportion))))
-
-# Create GAM maps using the shared color scale
-gam_map_djf <- ggplot() +
-  geom_tile(data = prediction_grid_djf, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid_djf, aes(x = lon_bin, y = lat_bin, z = proportion), color = "white", alpha = 0.3) +
-  geom_sf(data = world, fill = "gray80", color = "gray80") +
-  coord_sf(xlim = range(prediction_grid_djf$lon_bin), ylim = range(prediction_grid_djf$lat_bin), expand = FALSE) +
-  color_scale_gam +
-  labs(title = "Estimated Proportion of Anomalous Argo Profiles (DJF)", x = "Longitude", y = "Latitude") +
-  theme_minimal()
-
-gam_map_mam <- ggplot() +
-  geom_tile(data = prediction_grid_mam, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid_mam, aes(x = lon_bin, y = lat_bin, z = proportion), color = "white", alpha = 0.3) +
-  geom_sf(data = world, fill = "gray80", color = "gray80") +
-  coord_sf(xlim = range(prediction_grid_mam$lon_bin), ylim = range(prediction_grid_mam$lat_bin), expand = FALSE) +
-  color_scale_gam +
-  labs(title = "Estimated Proportion of Anomalous Argo Profiles (MAM)", x = "Longitude", y = "Latitude") +
-  theme_minimal()
-
-gam_map_jja <- ggplot() +
-  geom_tile(data = prediction_grid_jja, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid_jja, aes(x = lon_bin, y = lat_bin, z = proportion), color = "white", alpha = 0.3) +
-  geom_sf(data = world, fill = "gray80", color = "gray80") +
-  coord_sf(xlim = range(prediction_grid_jja$lon_bin), ylim = range(prediction_grid_jja$lat_bin), expand = FALSE) +
-  color_scale_gam +
-  labs(title = "Estimated Proportion of Anomalous Argo Profiles (JJA)", x = "Longitude", y = "Latitude") +
-  theme_minimal()
-
-gam_map_son <- ggplot() +
-  geom_tile(data = prediction_grid_son, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid_son, aes(x = lon_bin, y = lat_bin, z = proportion), color = "white", alpha = 0.3) +
-  geom_sf(data = world, fill = "gray80", color = "gray80") +
-  coord_sf(xlim = range(prediction_grid_son$lon_bin), ylim = range(prediction_grid_son$lat_bin), expand = FALSE) +
-  color_scale_gam +
-  labs(title = "Estimated Proportion of Anomalous Argo Profiles (SON)", x = "Longitude", y = "Latitude") +
-  theme_minimal()
-
-# Combine GAM maps into a single figure
-combined_gam_maps <- gam_map_djf + gam_map_mam + gam_map_jja + gam_map_son + 
-  plot_layout(ncol = 2, nrow = 2, guides = "collect") + 
-  plot_annotation(title = "GAM Estimated Proportion of Anomalous Argo Profiles Across Seasons")
-
-# Save combined figure
-ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_gam_maps.png", plot = combined_gam_maps, width = 15, height = 12)
 
 
 # Define a binned color scale for the proportion maps
 binned_color_scale <- scale_fill_viridis_b(
   name = "Proportion",
   breaks = seq(0, max(c(merged_counts_djf$proportion, merged_counts_mam$proportion, 
-                        merged_counts_jja$proportion, merged_counts_son$proportion)), by = 0.1), 
+                        merged_counts_jja$proportion, merged_counts_son$proportion)), by = 0.05), 
   limits = c(0, max(c(merged_counts_djf$proportion, merged_counts_mam$proportion, 
                       merged_counts_jja$proportion, merged_counts_son$proportion))),
   oob = scales::squish # Squishes out-of-bound values into the closest bin
@@ -453,15 +325,82 @@ combined_proportion_maps <- prop_map_djf + prop_map_mam + prop_map_jja + prop_ma
   plot_annotation(title = "Proportion of Subduction Events Across Seasons (Discontinuous Scale)")
 
 # Save combined figure
-ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_proportion_maps_discontinuous_k300.png", 
+ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_proportion_maps_discontinuous_k1000_res10.png", 
        plot = combined_proportion_maps, width = 15, height = 12)
+
+
+# Fit the GAM models for each season
+gam_djf <- gam(
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lon_bin,lat_bin , bs = "sos", k = 180),
+  family = binomial(link = "logit"),
+  data = filtered_counts_djf,
+  weights = log(count_total),
+  method = "REML"
+)
+
+
+
+gam_djf %>% summary()
+
+gam_mam <- gam(
+  formula = cbind(count_anomaly, count_total - count_anomaly) ~ s(lon_bin, lat_bin, bs = "sos", k = 180),
+  family = binomial(link = "logit"),
+  data = filtered_counts_mam,
+  weights = log(count_total),
+  method = "REML"
+)
+
+gam_mam %>% summary()
+
+glm(formula = )
+
+gam_jja <- gam(
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 150),
+  family = binomial(link = "logit"),
+  data = filtered_counts_jja,
+  weights = log(count_total),
+  method = "REML"
+)
+
+gam_son <- gam(
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 150),
+  family = binomial(link = "logit"),
+  data = filtered_counts_son,
+  weights = log(count_total),
+  method = "REML"
+)
+
+# Create prediction grids for each season
+create_prediction_grid <- function(merged_counts) {
+  lon_seq <- seq(min(merged_counts$lon_bin), max(merged_counts$lon_bin), by = 1)
+  lat_seq <- seq(min(merged_counts$lat_bin), max(merged_counts$lat_bin), by = 1)
+  expand.grid(lon_bin = lon_seq, lat_bin = lat_seq)
+}
+
+# Prediction grids
+prediction_grid_djf <- create_prediction_grid(merged_counts_djf)
+prediction_grid_mam <- create_prediction_grid(merged_counts_mam)
+prediction_grid_jja <- create_prediction_grid(merged_counts_jja)
+prediction_grid_son <- create_prediction_grid(merged_counts_son)
+
+# Predict the smoothed proportions for each season
+prediction_grid_djf$proportion <- predict(gam_djf, newdata = prediction_grid_djf, type = "response")
+prediction_grid_mam$proportion <- predict(gam_mam, newdata = prediction_grid_mam, type = "response")
+prediction_grid_jja$proportion <- predict(gam_jja, newdata = prediction_grid_jja, type = "response")
+prediction_grid_son$proportion <- predict(gam_son, newdata = prediction_grid_son, type = "response")
+
+# Remove NA values
+prediction_grid_djf <- prediction_grid_djf %>% filter(!is.na(proportion))
+prediction_grid_mam <- prediction_grid_mam %>% filter(!is.na(proportion))
+prediction_grid_jja <- prediction_grid_jja %>% filter(!is.na(proportion))
+prediction_grid_son <- prediction_grid_son %>% filter(!is.na(proportion))
 
 
 # Define a binned color scale for the GAM maps
 binned_color_scale_gam <- scale_fill_viridis_b(
   name = "Proportion",
   breaks = seq(0, max(c(prediction_grid_djf$proportion, prediction_grid_mam$proportion, 
-                        prediction_grid_jja$proportion, prediction_grid_son$proportion)), by = 0.1),
+                        prediction_grid_jja$proportion, prediction_grid_son$proportion)), by = 0.05),
   limits = c(0, max(c(prediction_grid_djf$proportion, prediction_grid_mam$proportion, 
                       prediction_grid_jja$proportion, prediction_grid_son$proportion))),
   oob = scales::squish
@@ -507,10 +446,10 @@ gam_map_son <- ggplot() +
 # Combine GAM maps with the discontinuous scale
 combined_gam_maps <- gam_map_djf + gam_map_mam + gam_map_jja + gam_map_son + 
   plot_layout(ncol = 2, nrow = 2, guides = "collect") + 
-  plot_annotation(title = "GAM Estimated Proportion of Anomalous Argo Profiles Across Seasons (Discontinuous Scale)")
+  plot_annotation(title = "GAM Estimated Proportion of Anomalous Argo Profiles Across Seasons (dx = 10, k = 150, )")
 
 # Save combined figure
-ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_gam_maps_discontinuous.png", 
+ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_gam_maps_discontinuous_k1000_res10_weighted.png", 
        plot = combined_gam_maps, width = 15, height = 12)
 
 
