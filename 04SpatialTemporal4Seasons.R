@@ -21,6 +21,14 @@ library(spdep)
 library(mgcv)
 
 
+conflicts_prefer(dplyr::filter)
+
+# first investigate structure of data
+df_complete_clean <- read_csv(file = "data/df_eddy_subduction_anom.csv")
+df_complete_clean %>% head()
+df_argo_clean <- read_csv(file = "data/df_argo_loc.csv")
+df_argo_clean %>% head()
+
 
 # Define months for the four distinct periods: DJF, MAM, JJA, SON
 djf_months <- c(12, 1, 2)   # December, January, February
@@ -241,7 +249,7 @@ combined_proportion_maps <- prop_map_djf + prop_map_mam + prop_map_jja + prop_ma
   plot_annotation(title = "Proportion of Subduction Events Across Seasons")
 
 # Save combined figure
-ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_proportion_maps.png", plot = combined_proportion_maps, width = 15, height = 12)
+ggsave(filename = "figures/TimeSpaceVar/4SEASONS/combined_proportion_maps.png", plot = combined_proportion_maps, width = 15, height = 12)
 
 
 
