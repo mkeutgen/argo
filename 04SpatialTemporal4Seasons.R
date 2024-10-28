@@ -352,10 +352,9 @@ gam_mam <- gam(
 
 gam_mam %>% summary()
 
-glm(formula = )
 
 gam_jja <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 150),
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 180),
   family = binomial(link = "logit"),
   data = filtered_counts_jja,
   weights = log(count_total),
@@ -363,7 +362,7 @@ gam_jja <- gam(
 )
 
 gam_son <- gam(
-  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 150),
+  cbind(count_anomaly, count_total - count_anomaly) ~ s(lat_bin, lon_bin, bs = "sos", k = 180),
   family = binomial(link = "logit"),
   data = filtered_counts_son,
   weights = log(count_total),
@@ -454,5 +453,4 @@ ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/4SEASONS/combined_gam_map
 
 
 
-##
 
