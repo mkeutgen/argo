@@ -19,13 +19,13 @@ library(viridis)
 library(sp)
 library(spdep)
 library(mgcv)
-
+library(lubridate)
 conflicts_prefer(dplyr::filter)
 
 # Step 1: Investigate the structure of the data
-df_complete_clean <- read_csv(file = "data/df_eddy_subduction_anom.csv")
+df_complete_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
 df_complete_clean %>% head()
-df_argo_clean <- read_csv(file = "data/df_argo_loc.csv")
+df_argo_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_argo_loc.csv")
 df_argo_clean %>% head()
 
 # Step 2: Define months for the four distinct seasons: DJF, MAM, JJA, SON
@@ -91,11 +91,9 @@ compute_counts <- function(df_argo, df_complete, years = 14) {
     group_by(lon_bin, lat_bin) %>%
     summarize(count_anomaly = n(), .groups = 'drop')
   
-  # Merge counts and compute frequency per month by dividing by number of years (14)
   merged_counts <- full_join(total_counts, anomaly_counts, by = c("lon_bin", "lat_bin")) %>%
     mutate(
       count_anomaly = ifelse(is.na(count_anomaly), 0, count_anomaly),
-      frequency_per_month = count_anomaly / (years * 3)  # Divide by the total number of months in the season (3 months)
     ) %>%
     filter(count_total > 0) %>%
     filter(!is.na(lat_bin))
@@ -109,11 +107,16 @@ frequency_mam <- compute_counts(df_argo_mam, df_complete_mam)
 frequency_jja <- compute_counts(df_argo_jja, df_complete_jja)
 frequency_son <- compute_counts(df_argo_son, df_complete_son)
 
+frequency_djf <- frequency_djf %>% mutate(frequency = count_anomaly/(14*3)) 
+frequency_mam <- frequency_mam %>% mutate(frequency = count_anomaly/(14*3)) 
+frequency_jja <- frequency_jja %>% mutate(frequency = count_anomaly/(14*3)) 
+frequency_son <- frequency_son %>% mutate(frequency = count_anomaly/(14*3)) 
+
 # Step 8: Fit Poisson GAM model for each season
 
 fit_seasonal_gam <- function(data, season) {
   gam_model <- gam(
-    count_anomaly ~ s(lat_bin, lon_bin, bs = "sos", k = 200),  # Spatial smoothing
+    count_anomaly ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),  # Spatial smoothing
     family = poisson(link = "log"),                           # Poisson for counts
     offset = log(count_total),                                # Offset for number of Argo profiles
     data = data,                                              # Data for the season
@@ -124,6 +127,9 @@ fit_seasonal_gam <- function(data, season) {
   return(gam_model)
 }
 
+
+
+
 # Fit models for each season
 gam_djf <- fit_seasonal_gam(frequency_djf, "DJF")
 gam_mam <- fit_seasonal_gam(frequency_mam, "MAM")
@@ -133,8 +139,8 @@ gam_son <- fit_seasonal_gam(frequency_son, "SON")
 # Step 9: Create prediction grids for each season
 
 create_prediction_grid <- function(data) {
-  lon_seq <- seq(min(data$lon_bin), max(data$lon_bin), by = 1)
-  lat_seq <- seq(min(data$lat_bin), max(data$lat_bin), by = 1)
+  lon_seq <- seq(min(data$lon_bin), max(data$lon_bin), by = 5)
+  lat_seq <- seq(min(data$lat_bin), max(data$lat_bin), by = 5)
   expand.grid(lon_bin = lon_seq, lat_bin = lat_seq)
 }
 
@@ -146,52 +152,96 @@ prediction_grid_son <- create_prediction_grid(frequency_son)
 
 # Step 10: Predict the frequency of subduction events for each grid cell
 
-prediction_grid_djf$frequency_per_month <- predict(gam_djf, newdata = prediction_grid_djf, type = "response")
-prediction_grid_mam$frequency_per_month <- predict(gam_mam, newdata = prediction_grid_mam, type = "response")
-prediction_grid_jja$frequency_per_month <- predict(gam_jja, newdata = prediction_grid_jja, type = "response")
-prediction_grid_son$frequency_per_month <- predict(gam_son, newdata = prediction_grid_son, type = "response")
+prediction_grid_djf$predicted_rate <- predict(gam_djf, newdata = prediction_grid_djf, type = "response")
+prediction_grid_mam$predicted_rate <- predict(gam_mam, newdata = prediction_grid_mam, type = "response")
+prediction_grid_jja$predicted_rate <- predict(gam_jja, newdata = prediction_grid_jja, type = "response")
+prediction_grid_son$predicted_rate <- predict(gam_son, newdata = prediction_grid_son, type = "response")
 
-# Function to adjust frequency from 5x5 degree grid to 1x1 degree resolution
-adjust_frequency_for_resolution <- function(prediction_grid) {
-  prediction_grid <- prediction_grid %>%
-    mutate(frequency_per_month = frequency_per_month / 25)  # Adjust by factor of 25
-  return(prediction_grid)
-}
+hyp_argo_prof <- 300
 
-# Adjust the predicted frequencies for each season
-prediction_grid_djf <- adjust_frequency_for_resolution(prediction_grid_djf)
-prediction_grid_mam <- adjust_frequency_for_resolution(prediction_grid_mam)
-prediction_grid_jja <- adjust_frequency_for_resolution(prediction_grid_jja)
-prediction_grid_son <- adjust_frequency_for_resolution(prediction_grid_son)
+prediction_grid_djf <- prediction_grid_djf %>% mutate(predicted_count = predicted_rate * hyp_argo_prof)
+prediction_grid_mam <- prediction_grid_mam %>% mutate(predicted_count = predicted_rate * hyp_argo_prof)
+prediction_grid_jja <- prediction_grid_jja %>% mutate(predicted_count = predicted_rate * hyp_argo_prof)
+prediction_grid_son <- prediction_grid_son %>% mutate(predicted_count = predicted_rate * hyp_argo_prof)
+#   # Function to adjust frequency from 5x5 degree grid to 3x3 degree resolution
+#   adjust_frequency_for_resolution <- function(prediction_grid) {
+#     prediction_grid <- prediction_grid %>%
+#       mutate(frequency_per_season = frequency_per_season / (25/9))  # Adjust by factor of 25
+#     return(prediction_grid)
+#   }
+#   
+#   # Adjust the predicted frequencies for each season
+#   prediction_grid_djf <- adjust_frequency_for_resolution(prediction_grid_djf)
+#   prediction_grid_mam <- adjust_frequency_for_resolution(prediction_grid_mam)
+#   prediction_grid_jja <- adjust_frequency_for_resolution(prediction_grid_jja)
+#   prediction_grid_son <- adjust_frequency_for_resolution(prediction_grid_son)
 
 # Updated binned color scale for frequency maps (can keep the same scale)
 binned_color_scale_gam <- scale_fill_viridis_b(
-  name = "Events/Month",
+  name = "Events/Season",
   oob = scales::squish
 )
 
 # Function to plot the adjusted frequency map with updated scaling
 plot_gam_frequency_map <- function(prediction_grid, title) {
   ggplot() +
-    geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = frequency_per_month)) +
-    geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = frequency_per_month), color = "white", alpha = 0.3) +
+    geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = predicted_count)) +
     geom_sf(data = world, fill = "gray80", color = "gray80") +
-    coord_sf(xlim = range(prediction_grid$lon_bin), ylim = range(prediction_grid$lat_bin), expand = FALSE) +
-    binned_color_scale_gam +
+    coord_sf(xlim = range(prediction_grid$lon_bin), ylim = range(prediction_grid$lat_bin), expand = FALSE) + #    binned_color_scale_gam +
     labs(title = title, x = "Longitude", y = "Latitude", fill = "Events/Month") +
-    theme_minimal()
+    theme_minimal()+scale_fill_viridis()
 }
 
 # Recreate the plots for each season with the adjusted frequency
-gam_map_djf <- plot_gam_frequency_map(prediction_grid_djf, "Predicted Frequency of Subduction Events (DJF, Adjusted for 1x1)")
-gam_map_mam <- plot_gam_frequency_map(prediction_grid_mam, "Predicted Frequency of Subduction Events (MAM, Adjusted for 1x1)")
-gam_map_jja <- plot_gam_frequency_map(prediction_grid_jja, "Predicted Frequency of Subduction Events (JJA, Adjusted for 1x1)")
-gam_map_son <- plot_gam_frequency_map(prediction_grid_son, "Predicted Frequency of Subduction Events (SON, Adjusted for 1x1)")
+gam_map_djf <- plot_gam_frequency_map(prediction_grid_djf, "Predicted Frequency of Subduction Events (DJF)")
+gam_map_mam <- plot_gam_frequency_map(prediction_grid_mam, "Predicted Frequency of Subduction Events (MAM)")
+gam_map_jja <- plot_gam_frequency_map(prediction_grid_jja, "Predicted Frequency of Subduction Events (JJA)")
+gam_map_son <- plot_gam_frequency_map(prediction_grid_son, "Predicted Frequency of Subduction Events (SON)")
 
 # Combine all maps into one layout with the adjusted frequency
 combined_gam_maps <- gam_map_djf + gam_map_mam + gam_map_jja + gam_map_son + 
   plot_layout(ncol = 2, nrow = 2, guides = "collect") + 
-  plot_annotation(title = "Predicted Frequency of Subduction Events (Adjusted for 1x1 Grid, Events/Month)")
+  plot_annotation(title = "Predicted Frequency of Subduction Events ")
 
 # Save the updated combined plot
 ggsave(filename = "figures/TimeSpaceVar/4SEASONS/combined_gam_frequency_maps_adjusted.png", plot = combined_gam_maps, width = 15, height = 12)
+
+
+
+
+## Model Optimization
+
+fit_seasonal_gam <- function(data, season) {
+  gam_model <- gam(
+    count_anomaly ~ s(lat_bin, lon_bin, bs = "sos", k = 1000),
+    family = poisson(link = "log"),
+    offset = log(count_total),
+    data = data,
+    method = "REML"
+  )
+  
+  # Calculate dispersion parameter
+  deviance <- deviance(gam_model)
+  df_residual <- df.residual(gam_model)
+  dispersion_parameter <- deviance / df_residual
+  
+  cat("\nModel for", season, "\n")
+  summary(gam_model)
+  cat("\nDispersion Parameter:", dispersion_parameter, "\n")
+  
+  return(list(
+    model = gam_model,
+    dispersion = dispersion_parameter
+  ))
+}
+
+# Fit models for each season
+gam_djf <- fit_seasonal_gam(frequency_djf, "DJF")
+gam_mam <- fit_seasonal_gam(frequency_mam, "MAM")
+gam_jja <- fit_seasonal_gam(frequency_jja, "JJA")
+gam_son <- fit_seasonal_gam(frequency_son, "SON")
+
+gam_djf[[1]] %>% summary()
+gam_mam[[1]] %>% summary()
+gam_jja[[1]] %>% summary()
+gam_son[[1]] %>% summary()
