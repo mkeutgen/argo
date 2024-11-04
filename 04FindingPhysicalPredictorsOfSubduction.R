@@ -2,7 +2,7 @@
 library(dplyr)
 library(gsw)
 library(oce)
-
+library(robustbase)
 # Read the list of WMO IDs
 wmolist <- readRDS("~/Documents/ARGO/BGC_Argo_WMO_PSAL_BBP_DOXY_TEMP.rds")
 
@@ -78,5 +78,28 @@ for (j in seq_along(wmolist)) {
 
 # Display or save the results
 print(head(mld_results))
-# Optionally save to a file
+
+mld_results$MLD %>% hist(bins=100)
+
+
+
+# Calculate the lower and upper percentiles
+lower_bound <- quantile(mld_results$MLD, 0.001, na.rm = TRUE)
+upper_bound <- quantile(mld_results$MLD, 0.999, na.rm = TRUE)
+
+
+
+# Create a new column 'cleaned_mld' that sets outliers to NA
+mld_results <- mld_results %>%
+  mutate(cleaned_mld = ifelse(MLD >= lower_bound & MLD <= upper_bound, MLD, NA))
+
+# Define bins for 'binned_mld' column following  https://doi.org/10.1029/2004JC002378
+breaks <- c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150, 200, 300, 400, 500, Inf)
+labels <- c("10-20", "20-30", "30-40", "40-50", "50-60", "60-70", "70-80", "80-90", 
+            "90-100", "100-125", "125-150", "150-200", "200-300", "300-400", "400-500", "500+")
+# Create the 'binned_mld' column using cut
+mld_results <- mld_results %>%
+  mutate(binned_mld = cut(MLD, breaks = breaks, labels = labels, right = FALSE))
+
+# Save to file
 write.csv(mld_results, "mld_results.csv", row.names = FALSE)
