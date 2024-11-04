@@ -70,7 +70,8 @@ for (j in seq_along(wmolist)) {
         Latitude = first(cycle_data$LATITUDE),
         Longitude = first(cycle_data$LONGITUDE),
         Time = first(cycle_data$TIME),
-        MLD = mld
+        MLD = mld,
+        CYCLE_NUMBER = first(CYCLE_NUMBER)
       ))
     }
   }, silent = TRUE)  # Continue to the next float if there's an error
@@ -103,3 +104,9 @@ mld_results <- mld_results %>%
 
 # Save to file
 write.csv(mld_results, "mld_results.csv", row.names = FALSE)
+
+mld_results <- read.csv(mld_results, "mld_results.csv", row.names = FALSE)
+
+
+# What about change in MLD? Assuming Argo are Lagrangian, we can compute the difference between the MLD in the Argo floats and the average of the last 2 timesteps
+mld_results %>% filter(WMO == 1902303) %>% View()
