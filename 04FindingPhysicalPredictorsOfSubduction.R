@@ -71,7 +71,7 @@ for (j in seq_along(wmolist)) {
         Longitude = first(cycle_data$LONGITUDE),
         Time = first(cycle_data$TIME),
         MLD = mld,
-        CYCLE_NUMBER = first(CYCLE_NUMBER)
+        CYCLE_NUMBER = first(cycle_data$CYCLE_NUMBER)
       ))
     }
   }, silent = TRUE)  # Continue to the next float if there's an error
@@ -95,8 +95,8 @@ mld_results <- mld_results %>%
   mutate(cleaned_mld = ifelse(MLD >= lower_bound & MLD <= upper_bound, MLD, NA))
 
 # Define bins for 'binned_mld' column following  https://doi.org/10.1029/2004JC002378
-breaks <- c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150, 200, 300, 400, 500, Inf)
-labels <- c("10-20", "20-30", "30-40", "40-50", "50-60", "60-70", "70-80", "80-90", 
+breaks <- c(0,10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150, 200, 300, 400, 500, Inf)
+labels <- c("0-10","10-20", "20-30", "30-40", "40-50", "50-60", "60-70", "70-80", "80-90", 
             "90-100", "100-125", "125-150", "150-200", "200-300", "300-400", "400-500", "500+")
 # Create the 'binned_mld' column using cut
 mld_results <- mld_results %>%
@@ -108,5 +108,7 @@ write.csv(mld_results, "mld_results.csv", row.names = FALSE)
 mld_results <- read.csv(mld_results, "mld_results.csv", row.names = FALSE)
 
 
-# What about change in MLD? Assuming Argo are Lagrangian, we can compute the difference between the MLD in the Argo floats and the average of the last 2 timesteps
+# What about change in MLD? Assuming Argo are Lagrangian, we can compute the difference 
+# between the 3 bin centered median MLD  in 
+# the Argo floats and the median of the last 5 preceding cycle numbers timesteps, to know if MLD is restatifying or not.
 mld_results %>% filter(WMO == 1902303) %>% View()
