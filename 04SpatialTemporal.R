@@ -214,6 +214,52 @@ gam_model <- gam(
 )
 
 summary(gam_model)
+# R-sq.(adj) =  0.308   Deviance explained = 42.4%
+
+
+threshold <- 50  # Example threshold
+filtered_counts <- merged_counts %>%
+  filter(count_total >= threshold)  # Filter out low count cells
+
+
+# With weights
+# Fit the model
+gam_model <- gam(
+  cbind(count_anomaly, count_total - count_anomaly) ~ 
+    s(lat_bin, lon_bin, bs = "sos", k = 700) + 
+    local_season + region,
+  family = binomial(link = "logit"),
+  weights = log(count_total),
+  data = merged_counts,
+  method = "REML"
+)
+# Convert region to factor
+filtered_counts$region <- as.factor(filtered_counts$region)
+
+
+# R-sq.(adj) =  0.305   Deviance explained =   47%
+gam_full_model_sos <- gam(
+  cbind(count_anomaly, count_total - count_anomaly) ~ 
+    s(lon_bin, lat_bin, bs = "sos", k = 101) + 
+    local_season + region + 
+    s(lon_bin, lat_bin, by = local_season, bs = "sos") +
+    s(lon_bin, lat_bin, by = region, bs = "sos"),
+  family = binomial(link = "logit"),
+  weights = log(count_total),
+  data = filtered_counts,
+  method = "REML"
+)
+
+gam_full_model_sos %>% summary()
+# R-sq.(adj) =  0.291   Deviance explained = 61.9%
+
+n_unique <- length(unique(paste(filtered_counts$lat_bin, filtered_counts$lon_bin)))
+print(n_unique)
+gam_full_model %>% summary()
+
+# Summary of the model
+summary(gam_full_model)
+
 
 # Check model diagnostics
 gam.check(gam_model)
@@ -230,14 +276,19 @@ gam_model <- gam(
 
 gam_model %>% summary()
 # No interaction
-gam_model <- gam(
+gam_full_model_separate <- gam(
   cbind(count_anomaly, count_total - count_anomaly) ~ 
-    s(lat_bin, lon_bin, bs = "sos", k = 5) + 
-    local_season + region,
+    s(lon_bin, lat_bin, bs = "sos", k = 50) +  # base spatial effect
+    local_season + region +
+    s(lon_bin, lat_bin, bs = "sos", by = factor(local_season == "Spring"), k = 50) +
+    s(lon_bin, lat_bin, bs = "sos", by = factor(local_season == "Summer"), k = 50) +
+    s(lon_bin, lat_bin, bs = "sos", by = factor(local_season == "Autumn"), k = 50) +
+    s(lon_bin, lat_bin, bs = "sos", by = factor(local_season == "Winter"), k = 50),
   family = binomial(link = "logit"),
-  data = merged_counts,
+  weights = log(count_total),
+  data = filtered_counts,
   method = "REML"
-) # R^2 = 0.56
+)
 
 
 
@@ -404,9 +455,6 @@ ggplot() +
 
 
 
-
-
-
 ##########################
 
 # Define seasons based on months
@@ -458,6 +506,20 @@ gam_model <- gam(
   method = "REML"
 )
 
+merged_counts$season <- merged_counts$season %>% as_factor()
+
+# R-sq.(adj) =  0.305   Deviance explained =   47%
+gam_full_model_sos <- gam(
+  cbind(count_anomaly, count_total - count_anomaly) ~ 
+    s(lon_bin, lat_bin, bs = "sos", k = 1200)+
+    s(lon_bin, lat_bin, by = season, bs = "sos"),
+    family = binomial(link = "logit"),
+  weights = log(count_total),
+  data = merged_counts,
+  method = "REML"
+)
+
+gam_full_model_sos %>% summary
 
 # Create prediction grid including season
 prediction_grid <- expand.grid(

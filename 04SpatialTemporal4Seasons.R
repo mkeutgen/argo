@@ -338,9 +338,25 @@ gam_djf <- gam(
   method = "REML"
 )
 
+# Spatial autocorrelation investigation
+# Extract the residuals from your fitted GAM model
+residuals_djf <- residuals(gam_djf, type = "pearson")
 
+# Add the residuals to your original data
+filtered_counts_djf$residuals <- residuals_djf
 
-gam_djf %>% summary()
+# Quick summary of the residuals
+summary(filtered_counts_djf$residuals)
+# Create a spatial weights matrix using k-nearest neighbors
+coords <- filtered_counts_djf %>% select(lon_bin, lat_bin) %>% as.matrix()
+nb <- knearneigh(coords, k = 4)
+listw <- nb2listw(knn2nb(nb), style = "W")
+
+# Calculate Moran's I for the residuals
+moran_test <- moran.test(filtered_counts_djf$residuals, listw)
+# No spatial autocorellation
+
+gam_djf %>% summary() # R-sq.(adj) =  0.837   Deviance explained = 96.5%
 
 gam_mam <- gam(
   formula = cbind(count_anomaly, count_total - count_anomaly) ~ s(lon_bin, lat_bin, bs = "sos", k = 180),

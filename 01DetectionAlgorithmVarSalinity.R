@@ -333,6 +333,20 @@ for (j in seq_along(wmolist)) {
     current_eddy.l <- list()
     
     
+    check_sign_change <- function(derivatives, target_level, check_depth = 50) {
+      # Find the index of the target level
+      target_index <- which.min(abs(derivatives$PRES_ADJUSTED - target_level))
+      
+      # Get indices to check around the target level
+      lower_index <- which.min(abs(derivatives$PRES_ADJUSTED - (target_level - check_depth)))
+      upper_index <- which.min(abs(derivatives$PRES_ADJUSTED - (target_level + check_depth)))
+      
+      # Check for sign changes in the derivative around the target level
+      sign_changes <- sign(derivatives$dVALUE[lower_index:upper_index])
+      change_detected <- any(diff(sign_changes) != 0, na.rm = TRUE)
+      
+      return(change_detected)
+    }
     
     
     # Iterate over each cycle number in carb_eddy.id
@@ -340,7 +354,7 @@ for (j in seq_along(wmolist)) {
       current_cycle <- carb_eddy.id$CYCLE_NUMBER[i]
       current_data <- A %>% filter(CYCLE_NUMBER == current_cycle)
       current_eddy <- carb_eddy.id %>% filter(CYCLE_NUMBER == current_cycle)
-      pres_level <-  carb_eddy.id$PRES_ADJUSTED[i]
+      pres_level <-  current_eddy %>% pull(PRES_ADJUSTED)
       
       # Filter data for AOU and ABS_SAL
       data_aou <- current_data %>% filter(VAR == "AOU")
