@@ -19,8 +19,13 @@ library(viridis)
 library(sp)
 library(spdep)
 library(mgcv)
+# Resolve function conflicts in favor of dplyr
+conflict_prefer("select", "dplyr")
+conflict_prefer("filter", "dplyr")
 
+model <- readRDS("/data/GLOBARGO/src/data/gam_model_21nov_N_2_MLD_LAT_LON_Season.Rds")
 
+summary(model)
 # first investigate structure of data
 df_complete_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
 df_complete_clean %>% head()

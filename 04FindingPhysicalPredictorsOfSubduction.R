@@ -364,3 +364,111 @@ for (i in 1:nrow(sample_profiles)) {
   # Print the plot for quick viewing
   print(plot)
 }
+
+
+###############################
+#### N^2 (stratification) #####
+###############################
+
+
+# Initialize a data frame to store results
+N2_results <- data.frame(WMO = integer(), Latitude = numeric(), Longitude = numeric(), Time = as.POSIXct(character()), N2 = numeric())
+# Main processing loop over each WMO ID
+for (j in seq_along(wmolist)) {
+  try({
+    # Get current WMO ID
+    wmo <- wmolist[j]
+    
+    
+    # Load data for the current float (assuming 'load_float_data' is an internal function)
+    float_data <- load_float_data(
+      float_ids = wmo,
+      variables = c(
+        "DATA_TYPE", "PLATFORM_NUMBER", "BBP700", "BBP700_dPRES",
+        "BBP700_ADJUSTED_QC", "LATITUDE", "LONGITUDE", "PROFILE_TEMP_QC",
+        "PROFILE_DOXY_QC", "PROFILE_BBP700_QC", "PRES_QC", "PRES",
+        "PRES_ADJUSTED", "PROFILE_PSAL_QC", "CHLA_QC", "CHLA_ADJUSTED",
+        "CHLA_ADJUSTED_ERROR", "DOXY", "DOXY_QC", "DOXY_ADJUSTED",
+        "DOXY_ADJUSTED_QC", "DOXY_ADJUSTED_ERROR", "PSAL", "PSAL_dPRES",
+        "PSAL_ADJUSTED", "PSAL_ADJUSTED_QC", "TEMP", "TEMP_QC", "TEMP_dPRES",
+        "TEMP_ADJUSTED", "TEMP_ADJUSTED_QC", "TEMP_ADJUSTED_ERROR"
+      ),
+      format = "dataframe"
+    )
+    
+    # Preprocess data: calculate additional oceanographic parameters
+    float_data <- float_data %>%
+      filter(!is.na(PRES_ADJUSTED) & !is.na(PSAL_ADJUSTED) & !is.na(TEMP_ADJUSTED)) %>%
+      group_by(CYCLE_NUMBER) %>%
+      group_modify(~ {
+        df <- .x
+        ABS_SAL <- gsw::gsw_SA_from_SP(
+          SP = df$PSAL_ADJUSTED,
+          p = df$PRES_ADJUSTED,
+          longitude = first(df$LONGITUDE),
+          latitude = first(df$LATITUDE)
+        )
+        CONS_TEMP <- gsw::gsw_CT_from_t(
+          SA = ABS_SAL,
+          t = df$TEMP_ADJUSTED,
+          p = df$PRES_ADJUSTED
+        )
+        N_SQUARED <- gsw::gsw_Nsquared(
+          SA = ABS_SAL,
+          CT = CONS_TEMP,
+          p = df$PRES_ADJUSTED
+        )[[1]]  # Extract only the Nsquared component
+        
+        # Align N_SQUARED with the original profile
+        df <- df %>%
+          mutate(
+            ABS_SAL = ABS_SAL,
+            CONS_TEMP = CONS_TEMP,
+            N_SQUARED = c(N_SQUARED, NA)  # Add NA for the last row to match the length
+          )
+        return(df)
+      }) %>%
+      ungroup()
+    
+    
+    # Extract maximum N^2 for each cycle and store in the results data frame
+    max_N2_per_cycle <- float_data %>%
+      group_by(CYCLE_NUMBER) %>%
+      summarize(
+        Max_N2 = max(N_SQUARED, na.rm = TRUE),  # Calculate max N^2 while ignoring NA
+        Latitude = first(LATITUDE),            # Take the first latitude for reference
+        Longitude = first(LONGITUDE),          # Take the first longitude for reference
+        Time = first(TIME) %>% as_date()                     # Take the first timestamp for reference
+      ) %>%
+      ungroup()
+    
+    # Append the results to the N2_results data frame
+    N2_results <- bind_rows(
+      N2_results,
+      max_N2_per_cycle %>%
+        mutate(WMO = as.integer(wmo))  # Add the WMO column to the results
+    )
+  })}
+
+# Data Cleaning
+
+N2_results <- N2_results %>%
+  filter(!is.na(Max_N2) & Max_N2 > 0 &  is.finite(Max_N2))  # Remove NAs and non-physical values
+
+# Calculate the lower and upper percentiles to identify outliers
+lower_bound_N2 <- quantile(N2_results$Max_N2, 0.0025, na.rm = TRUE)
+upper_bound_N2 <- quantile(N2_results$Max_N2, 0.9975, na.rm = TRUE)
+
+# Create a new column 'cleaned_N2' that sets outliers to NA
+N2_results <- N2_results %>%
+  mutate(cleaned_max_N2 = ifelse(Max_N2 >= lower_bound_N2 & Max_N2 <= upper_bound_N2, Max_N2, NA)) %>%
+  filter(!is.na(cleaned_max_N2))
+
+N2_results$cleaned_max_N2 %>% summary()
+
+# Print or save results
+
+# Save to file
+write.csv(N2_results, "/data/GLOBARGO/src/data/N2_results.csv", row.names = FALSE)
+
+

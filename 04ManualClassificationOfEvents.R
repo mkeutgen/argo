@@ -27,12 +27,13 @@ conflict_prefer("filter", "dplyr")
 df_argo <- read_csv("/data/GLOBARGO/data/argo_profiles_df.csv")
 
 
-# Load detected events :
+# Load datasets of manually verified detected subduction events in salinity & spiciness :
 df_abs_sal <- read_csv("/data/GLOBARGO/data/detected_events_abs_sal_var_v5.csv")
 df_spic <- read_csv("/data/GLOBARGO/data/detected_events_sens_and_spec_incr.csv")
 
-
-
+# Load datasets of manually verified detected subduction events with carbon  
+df_carbon_cat1 <- read_csv("~/Documents/GLOBARGO/src/data/carbon_cat1_class.csv")
+df_carbon_cat2 <- read_csv("~/Documents/GLOBARGO/src/data/carbon_cat2_class.csv") 
 # Classified datasets
 # Spiciness 
 df_spic_class <- read_csv("/data/GLOBARGO/data/anom_in_spic_and_sal_cat1_and2.csv")
