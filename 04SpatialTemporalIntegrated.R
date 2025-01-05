@@ -23,90 +23,103 @@ library(viridis)
 library(sp)
 library(spdep)
 library(mgcv)
+library(gratia)
 
 library(patchwork)
 
 # Step 1: Investigate the structure of the data
-df_complete_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
+# dataset of carbon subduction (subset of dataset of subduction with and without)
+
+df_carbon <- read_csv(file="data/df_carbon_subduction_anom.csv")
+df_carbon %>% head()
+
+# dataset of subduction with and without carbon (superset of df_carbon, subset of df_argo_clean)
+
+df_complete_clean <- read_csv(file = "data/df_eddy_subduction_anom.csv")
 df_complete_clean %>% head()
-df_argo_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_argo_loc.csv")
+
+# dataset of complete argo floats (superset of all datasets)
+
+df_argo_clean <- read_csv(file = "data/df_argo_loc.csv")
 df_argo_clean %>% head()
 
-df_mld <- read_csv(file = "/data/GLOBARGO/src/data/mld_results.csv")
-df_n2 <- read_csv(file="/data/GLOBARGO/src/data/N2_results.csv")
+df_mld <- read_csv(file = "data/mld_results.csv")
+df_n2 <- read_csv(file="data/N2_results.csv")
 # var renaming
 df_mld$TIME <- df_mld$Time 
 df_n2$TIME <- df_n2$Time
 
 
 
-# After discussing with Leon, maybe we don't need to bin the data and it would be a classical case of logistic regression
+##### # After discussing with Leon,
+##### # maybe we don't need to bin the data and it would be a classical case of logistic regression
+##### 
+ # Argo df without anomaly 
+ df_argo_clean$Anomaly <- 0
+ # Complete df with anomaly in AOU and ABS_SAL
+ df_complete_clean$Anomaly <- 1
+ 
+ df_full <- bind_rows(df_argo_clean,df_complete_clean) %>%
+   select(TIME,LATITUDE,LONGITUDE,CYCLE_NUMBER,WMO,Anomaly)
+ 
+ df_full <- df_full %>%
+   left_join(
+     df_mld %>% select(WMO, CYCLE_NUMBER, TIME, cleaned_mld, binned_mld,MLD_rate_of_change, MLD_sign_rate_of_change),
+     by = c("WMO", "CYCLE_NUMBER", "TIME")
+   )
+ 
+ df_full <- df_full %>%
+   left_join(
+     df_n2 %>% select(WMO, CYCLE_NUMBER, TIME, Max_N2,cleaned_N2),
+     by = c("WMO", "CYCLE_NUMBER", "TIME")
+   )
+ 
+ # Remove rows with missing values in key variables
+ df_full <- df_full %>%
+   filter(
+     !is.na(LATITUDE),
+     !is.na(LONGITUDE),
+     !is.na(Anomaly),
+     !is.na(cleaned_mld)
+   )
+ 
+ # Create Hemisphere variable
+ df_full$Hemisphere <- factor(ifelse(df_full$LATITUDE >= 0, "Northern", "Southern"))
+ 
+ # Extract date components
+ df_full$Year <- year(df_full$TIME)
+ df_full$Month <- month(df_full$TIME)
+ df_full$Week <- week(df_full$TIME)
+ df_full$DayOfYear <- yday(df_full$TIME)
+ 
+ # Adjust Day of Year for Southern Hemisphere to align seasons
+ df_full$AdjustedDayOfYear <- ifelse(
+   df_full$Hemisphere == "Southern",
+   (df_full$DayOfYear + 182.5) %% 365,
+   df_full$DayOfYear
+ )
+ # Ensure that day 0 is 365
+ df_full$AdjustedDayOfYear[df_full$AdjustedDayOfYear == 0] <- 365
+ 
+ # Create a log-transformed MLD variable
+ df_full$log_cleaned_mld <- log(df_full$cleaned_mld + 1)  # Add 1 to avoid log(0)
+ 
+ df_full$log_cleaned_N2 <- log(df_full$cleaned_N2 + 1)  # Add 1 to avoid log(0)
+ 
+ 
+ 
+ write_csv(df_full,"data/dataframe_full_mld_and_n2.csv") 
 
 
 
-# Complete df 
-
-# Argo df without anomaly 
-df_argo_clean$Anomaly <- 0
-# Complete df with anomaly
-df_complete_clean$Anomaly <- 1
-
-df_full <- bind_rows(df_argo_clean,df_complete_clean) %>%
-  select(TIME,LATITUDE,LONGITUDE,CYCLE_NUMBER,WMO,Anomaly)
-
-df_full <- df_full %>%
-  left_join(
-    df_mld %>% select(WMO, CYCLE_NUMBER, TIME, cleaned_mld, binned_mld,MLD_rate_of_change, MLD_sign_rate_of_change),
-    by = c("WMO", "CYCLE_NUMBER", "TIME")
-  )
-
-df_full <- df_full %>%
-  left_join(
-    df_n2 %>% select(WMO, CYCLE_NUMBER, TIME, Max_N2,cleaned_N2),
-    by = c("WMO", "CYCLE_NUMBER", "TIME")
-  )
-
-# Remove rows with missing values in key variables
-df_full <- df_full %>%
-  filter(
-    !is.na(LATITUDE),
-    !is.na(LONGITUDE),
-    !is.na(Anomaly),
-    !is.na(cleaned_mld)
-  )
-
-# Create Hemisphere variable
-df_full$Hemisphere <- factor(ifelse(df_full$LATITUDE >= 0, "Northern", "Southern"))
-
-# Extract date components
-df_full$Year <- year(df_full$TIME)
-df_full$Month <- month(df_full$TIME)
-df_full$DayOfYear <- yday(df_full$TIME)
-
-# Adjust Day of Year for Southern Hemisphere to align seasons
-df_full$AdjustedDayOfYear <- ifelse(
-  df_full$Hemisphere == "Southern",
-  (df_full$DayOfYear + 182.5) %% 365,
-  df_full$DayOfYear
-)
-# Ensure that day 0 is 365
-df_full$AdjustedDayOfYear[df_full$AdjustedDayOfYear == 0] <- 365
-
-# Create a log-transformed MLD variable
-df_full$log_cleaned_mld <- log(df_full$cleaned_mld + 1)  # Add 1 to avoid log(0)
-
-df_full$log_cleaned_N2 <- log(df_full$cleaned_N2 + 1)  # Add 1 to avoid log(0)
-
-
-
-write_csv(df_full,"/data/GLOBARGO/src/data/dataframe_full_mld_and_n2.csv") 
-
+df_full <- read_csv("data/dataframe_full_mld_and_n2.csv")
 # MLD is significant (positive)
 m <- glm(formula = Anomaly ~ log(cleaned_mld),
     family = binomial(link = "logit"),
     data = df_full) 
 
 m %>% summary()
+
 df_full$cleaned_N2
 # Stratification is significant (negative)
 m <- glm(formula = Anomaly ~ log(cleaned_N2) ,
@@ -115,10 +128,9 @@ m <- glm(formula = Anomaly ~ log(cleaned_N2) ,
 
 m %>% summary() 
 
-# Stratification is not significant if combined with mld
+# MLD is not significant if combined with N2
 m <- glm(formula = Anomaly ~ log(cleaned_N2) + log(cleaned_mld) ,
-         family = binomial(link = "logit"),
-         data = df_full) 
+         family = binomial(link = "logit"),data=df_full)
 
 m %>% summary() 
 
@@ -269,7 +281,7 @@ df_full_binned <- assign_bins(df_full)
 
 # Optionally, average predictors within grid cells and months
 df_agg <- df_full_binned %>%
-  group_by(lat_bin, lon_bin, Month) %>%
+  group_by(lat_bin, lon_bin, Week,Year) %>%
   summarise(
     Anomaly = sum(Anomaly),
     Total =  n(),

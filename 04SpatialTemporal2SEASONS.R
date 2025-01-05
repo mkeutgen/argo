@@ -27,9 +27,14 @@ model <- readRDS("/data/GLOBARGO/src/data/gam_model_21nov_N_2_MLD_LAT_LON_Season
 
 summary(model)
 # first investigate structure of data
-df_complete_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
+# dataset of carbon subduction
+df_carbon <- read_csv(file="data/df_carbon_subduction_anom.csv")
+df_carbon %>% head()
+# dataset of complete subduction
+df_complete_clean <- read_csv(file = "data/df_eddy_subduction_anom.csv")
 df_complete_clean %>% head()
-df_argo_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_argo_loc.csv")
+# dataset of full argo
+df_argo_clean <- read_csv(file = "data/df_argo_loc.csv")
 df_argo_clean %>% head()
 
 # Define months for the two periods: DJFMAM and JJASON
