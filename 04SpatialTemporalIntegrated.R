@@ -27,28 +27,35 @@ library(mgcv)
 library(patchwork)
 
 # Step 1: Investigate the structure of the data
-df_complete_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
+# dataset of carbon subduction (subset of dataset of subduction with and without)
+
+df_carbon <- read_csv(file="data/df_carbon_subduction_anom.csv")
+df_carbon %>% head()
+
+# dataset of subduction with and without carbon (superset of df_carbon, subset of df_argo_clean)
+
+df_complete_clean <- read_csv(file = "data/df_eddy_subduction_anom.csv")
 df_complete_clean %>% head()
-df_argo_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_argo_loc.csv")
+
+# dataset of complete argo floats (superset of all datasets)
+
+df_argo_clean <- read_csv(file = "data/df_argo_loc.csv")
 df_argo_clean %>% head()
 
-df_mld <- read_csv(file = "/data/GLOBARGO/src/data/mld_results.csv")
-df_n2 <- read_csv(file="/data/GLOBARGO/src/data/N2_results.csv")
+df_mld <- read_csv(file = "data/mld_results.csv")
+df_n2 <- read_csv(file="data/N2_results.csv")
 # var renaming
 df_mld$TIME <- df_mld$Time 
 df_n2$TIME <- df_n2$Time
 
 
 
-# After discussing with Leon, maybe we don't need to bin the data and it would be a classical case of logistic regression
-
-
-
-# Complete df 
+# After discussing with Leon,
+# maybe we don't need to bin the data and it would be a classical case of logistic regression
 
 # Argo df without anomaly 
 df_argo_clean$Anomaly <- 0
-# Complete df with anomaly
+# Complete df with anomaly in AOU and ABS_SAL
 df_complete_clean$Anomaly <- 1
 
 df_full <- bind_rows(df_argo_clean,df_complete_clean) %>%
@@ -118,7 +125,6 @@ m %>% summary()
 # Stratification is not significant if combined with mld
 m <- glm(formula = Anomaly ~ log(cleaned_N2) + log(cleaned_mld) ,
          family = binomial(link = "logit"),
-         data = df_full) 
 
 m %>% summary() 
 

@@ -31,10 +31,7 @@ df_argo <- read_csv("/data/GLOBARGO/data/argo_profiles_df.csv")
 df_abs_sal <- read_csv("/data/GLOBARGO/data/detected_events_abs_sal_var_v5.csv")
 df_spic <- read_csv("/data/GLOBARGO/data/detected_events_sens_and_spec_incr.csv")
 
-# Load datasets of manually verified detected subduction events with carbon  
-df_carbon_cat1 <- read_csv("~/Documents/GLOBARGO/src/data/carbon_cat1_class.csv")
-df_carbon_cat2 <- read_csv("~/Documents/GLOBARGO/src/data/carbon_cat2_class.csv") 
-# Classified datasets
+# Classified subduction (WITH or WITHOUT carbon) datasets
 # Spiciness 
 df_spic_class <- read_csv("/data/GLOBARGO/data/anom_in_spic_and_sal_cat1_and2.csv")
 # Salinity
@@ -99,3 +96,35 @@ df_argo_clean <- df_argo %>%
 
 write_csv(df_complete_clean,file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
 write_csv(df_argo_clean, file = "/data/GLOBARGO/src/data/df_argo_loc.csv")
+
+
+
+# Load datasets of manually verified detected subduction events with carbon  
+# Load datasets for carbon classification
+df_carbon_cat1 <- read_csv("~/Documents/GLOBARGO/src/data/carbon_cat1_class.csv")
+df_carbon_cat2 <- read_csv("~/Documents/GLOBARGO/src/data/carbon_cat2_class.csv")
+
+# Remove "_plot" suffix and ensure WMO is numeric
+df_carbon_cat1 <- df_carbon_cat1 %>%
+  mutate(WMO = as.numeric(gsub("_plot", "", WMO)),
+         CYCLE_NUMBER = Cycle)
+
+df_carbon_cat2 <- df_carbon_cat2 %>%
+  mutate(WMO = as.numeric(gsub("_plot", "", WMO)),
+         CYCLE_NUMBER = Cycle)
+
+# Combine carbon datasets
+df_carbon_final <- bind_rows(df_carbon_cat1, df_carbon_cat2) %>%
+  select(WMO, CYCLE_NUMBER, Category)
+
+
+# Add location and time data from df_abs_sal
+df_carbon_complete <- df_carbon_final %>%
+  left_join(df_abs_sal_unique %>% select(WMO, CYCLE_NUMBER, LATITUDE, LONGITUDE, TIME), 
+            by = c("WMO", "CYCLE_NUMBER"))
+
+df_carbon_complete_clean <- df_carbon_complete %>%
+  filter(!is.na(LONGITUDE) & !is.na(LATITUDE) & is.finite(LONGITUDE) & is.finite(LATITUDE))
+
+# Save the cleaned carbon data
+write_csv(df_carbon_complete_clean, file = "~/Documents/GLOBARGO/src/data/df_carbon_subduction_anom.csv")
