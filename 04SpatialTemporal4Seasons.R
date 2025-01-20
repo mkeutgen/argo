@@ -500,7 +500,7 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
 # - If you want a consistent color scale across all seasons, you can find the 
 #   max proportion across all prediction grids and use e.g. 
 #   scale_fill_viridis_c(limits = c(0, global_max)).
- 
+
  
 # Now let's do histograms faceted by region showing the probability of (carbon) subduction
 # by months :
@@ -590,5 +590,4 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  # Optional: Save the plots
  ggsave("figures/seasonal_subduction_by_region.png", plot = plot_subduction, width = 10, height = 8)
  ggsave("figures/seasonal_carbon_subduction_by_region.png", plot = plot_carbon_subduction, width = 10, height = 8)
- 
  
