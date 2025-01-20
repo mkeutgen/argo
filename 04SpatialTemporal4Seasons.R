@@ -505,5 +505,90 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
 # Now let's do histograms faceted by region showing the probability of (carbon) subduction
 # by months :
  
+ ###############################################################################
+ # Seasonal Cycle of Subduction (Carbon and Non-Carbon) by Region and Month
+ ###############################################################################
+ 
+ # Add Month and Region Information to Data
+ add_month_region <- function(df) {
+   df %>%
+     mutate(
+       month = month(TIME, label = TRUE, abbr = TRUE),  # Extract month as a factor
+       region = case_when(
+         LATITUDE > 30 & LONGITUDE >= -100 & LONGITUDE <= 20 ~ "North Atlantic",  # Above 30°N
+         LATITUDE > 30 & (LONGITUDE < -100 | LONGITUDE > 120) ~ "North Pacific",  # Above 30°N
+         LATITUDE >= 0 & LATITUDE <= 30 ~ "Northern Tropics",                     # 0° to 30°N
+         LATITUDE < 0 & LATITUDE >= -30 ~ "Southern Tropics",                     # 0° to 30°S
+         LATITUDE < -30 ~ "Southern Ocean",                                       # Below 30°S
+         TRUE ~ NA_character_  # Exclude undefined regions
+       )
+     )
+ }
+ 
+ df_argo_clean <- add_month_region(df_argo_clean)
+ df_complete_clean <- add_month_region(df_complete_clean)
+ df_carbon_clean <- add_month_region(df_carbon_clean)
+ 
+ # Step 2: Compute Probabilities by Region and Month
+ compute_monthly_probabilities <- function(df_argo, df_events) {
+   # Total Argo profiles by region and month
+   total_counts <- df_argo %>%
+     group_by(region, month) %>%
+     summarize(count_total = n(), .groups = "drop")
+   
+   # Subduction events by region and month
+   event_counts <- df_events %>%
+     group_by(region, month) %>%
+     summarize(count_event = n(), .groups = "drop")
+   
+   # Merge and compute proportions
+   merged <- full_join(total_counts, event_counts, by = c("region", "month")) %>%
+     mutate(
+       count_event = replace_na(count_event, 0),
+       proportion = ifelse(count_total > 0, count_event / count_total, NA)
+     )
+   return(merged)
+ }
+ 
+ # Compute probabilities for subduction and carbon subduction
+ monthly_probs_subduction <- compute_monthly_probabilities(df_argo_clean, df_complete_clean)
+ monthly_probs_carbon <- compute_monthly_probabilities(df_argo_clean, df_carbon_clean)
+ 
+ # Step 3: Plot Monthly Histograms Faceted by Region
+ plot_monthly_histograms <- function(monthly_probs, title) {
+   monthly_probs <- monthly_probs %>%
+     filter(!is.na(region), !is.na(proportion), !is.na(month))  # Remove NA regions, proportions, and months
+   
+   ggplot(monthly_probs, aes(x = month, y = proportion, fill = region)) +
+     geom_bar(stat = "identity", position = "dodge", color = "black", alpha = 0.8) +
+     facet_wrap(~region, ncol = 2,axes="all") +
+     scale_fill_viridis_d() +
+     labs(
+       title = title,
+       x = "Month",
+       y = "Probability of Subduction",
+       fill = "Region"
+     ) +
+     theme_minimal() +
+     theme(
+       strip.text = element_text(size = 12, face = "bold"),
+       axis.text.x = element_text(angle = 45, hjust = 1)
+     )
+ }
+ 
+ 
+# Plot subduction probabilities
+ plot_subduction <- plot_monthly_histograms(monthly_probs_subduction, "Probability that an Argo Float captures a subduction event")
+ 
+ # Plot carbon subduction probabilities
+ plot_carbon_subduction <- plot_monthly_histograms(monthly_probs_carbon, "Probability that an Argo Float captures a subduction event with carbon")
+ 
+ # Display the plots
+ plot_subduction
+ plot_carbon_subduction
+ 
+ # Optional: Save the plots
+ ggsave("figures/seasonal_subduction_by_region.png", plot = plot_subduction, width = 10, height = 8)
+ ggsave("figures/seasonal_carbon_subduction_by_region.png", plot = plot_carbon_subduction, width = 10, height = 8)
  
  
