@@ -591,3 +591,44 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  ggsave("figures/seasonal_subduction_by_region.png", plot = plot_subduction, width = 10, height = 8)
  ggsave("figures/seasonal_carbon_subduction_by_region.png", plot = plot_carbon_subduction, width = 10, height = 8)
  
+ ### Add a statistical test to bring evidence against H0 that the monthly frequency of subduction and of carbon subduction
+ # sampled from a uniform distribution to test whether subduction is or not seasonal 
+ # Remove NA months from both datasets
+ monthly_probs_subduction <- monthly_probs_subduction %>% filter(!is.na(month))
+ monthly_probs_carbon <- monthly_probs_carbon %>% filter(!is.na(month))
+ 
+ # Function to test uniformity for each region
+ test_seasonality_proportions <- function(monthly_probs) {
+   monthly_probs %>%
+     group_by(region) %>%
+     summarize(
+       chisq_stat = chisq.test(
+         x = proportion * count_total,  # Observed weighted counts
+         p = rep(1 / 12, 12),           # Expected uniform proportions
+         rescale.p = TRUE               # Rescale expected to match total
+       )$statistic,
+       p_value = chisq.test(
+         x = proportion * count_total,
+         p = rep(1 / 12, 12),
+         rescale.p = TRUE
+       )$p.value,
+       .groups = "drop"
+     )
+ }
+ 
+ 
+ t <- monthly_probs_carbon %>% filter(region == "North Atlantic")
+ chisq.test(t$count_event)
+ 
+ # Test seasonality for subduction
+ seasonality_test_subduction <- test_seasonality_proportions(monthly_probs_subduction)
+ 
+ # Test for carbon subduction
+ seasonality_test_carbon <- test_seasonality_proportions(monthly_probs_carbon)
+ 
+ # Display results
+ print("Subduction Seasonality Test:")
+ print(seasonality_test_subduction)
+ 
+ print("Carbon Subduction Seasonality Test:")
+ print(seasonality_test_carbon)
