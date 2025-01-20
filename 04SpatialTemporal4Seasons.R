@@ -19,7 +19,7 @@ library(viridis)
 library(sp)
 library(spdep)
 library(mgcv)
-
+library(patchwork)
 # Resolve function conflicts in favor of dplyr
 conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
@@ -217,10 +217,10 @@ merged_counts_jja <- compute_counts(df_argo_jja, df_complete_jja)
 merged_counts_son <- compute_counts(df_argo_son, df_complete_son)
 
 # Compute merged_counts of CARBON SUBDUCTION for each season
-merged_carbon_counts_djf <- compute_counts(df_argo_djf, df_complete_djf)
-merged_carbon_counts_mam <- compute_counts(df_argo_mam, df_complete_mam)
-merged_carbon_counts_jja <- compute_counts(df_argo_jja, df_complete_jja)
-merged_carbon_counts_son <- compute_counts(df_argo_son, df_complete_son)
+merged_carbon_counts_djf <- compute_counts(df_argo_djf, df_carbon_djf)
+merged_carbon_counts_mam <- compute_counts(df_argo_mam, df_carbon_mam)
+merged_carbon_counts_jja <- compute_counts(df_argo_jja, df_carbon_jja)
+merged_carbon_counts_son <- compute_counts(df_argo_son, df_carbon_son)
 
 
 # Create proportion maps of SUBDUCTION (w/o carbon) without saving them to files directly
@@ -478,6 +478,141 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  ggsave("figures/TimeSpaceVar/4SEASONS/gam_carbon_subduction_discrete_4seasons.png",
         combined_carb, width = 14, height = 10)
 
+ 
+ ###########################################################
+ ### 7. Add stippling DJF ########################################
+ #############################################################
+ # Define resolutions
+ gam_resolution <- 1   # Resolution for GAM predictions
+ stipple_resolution <- 5  # Coarser resolution for undersampling shading
+ 
+ # Step 1: Aggregate Argo float locations to 10° resolution
+ argo_bins <- df_argo_clean %>%
+   filter(month(TIME) %in% c(1, 2, 3))  %>%
+   mutate(
+     lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+   ) %>%
+   group_by(lon_bin_stipple, lat_bin_stipple) %>%
+   summarize(count = n(), .groups = "drop")  # Count profiles per 10° bin
+ 
+ # Step 2: Identify undersampled areas
+ undersampled <- argo_bins %>%
+   filter(count < 5)  # Define threshold for undersampling
+ 
+ # Step 3: Prepare GAM prediction data at 1° resolution
+ # Assuming `prediction_grid` is your GAM prediction output (from predict_gam)
+ prediction_grid <- pred_djf_subd  # Example for DJF GAM predictions
+ 
+ # Keep GAM grid at 1° resolution
+ prediction_grid <- prediction_grid %>%
+   mutate(
+     lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
+   )
+ 
+ # Step 4: Merge GAM predictions with undersampled areas
+ # Add a TRUE/FALSE column indicating undersampled cells at 10° resolution
+ prediction_grid <- prediction_grid %>%
+   left_join(undersampled, by = c("lon_bin_stipple" = "lon_bin_stipple",
+                                  "lat_bin_stipple" = "lat_bin_stipple")) %>%
+   mutate(
+     undersampled = ifelse(is.na(count), FALSE, TRUE)  # Mark as TRUE if undersampled
+   ) 
+ 
+ # Step 5: Plot GAM map with stippling for undersampled areas
+ gam_map_with_stippling_djf <- ggplot() +
+   # GAM predictions as a tile layer at 1° resolution
+   geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
+   geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = proportion),
+                color = "white", alpha = 0.3) +
+   # Add stippling for unwhitedersampled areas at 10° resolution
+   geom_point(data = filter(prediction_grid, undersampled == TRUE),
+              aes(x = lon_bin_stipple, y = lat_bin_stipple),
+              color = "white", alpha = 0.6, size = 0.25, shape = 20) +
+   # World map for context
+   geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
+   coord_sf(expand = FALSE) +
+   labs(
+     title = "GAM-Estimated Probability of Subduction Events (DJF)",
+     x = "Longitude",
+     y = "Latitude",
+     fill = "Probability"
+   ) +
+   scale_fill_viridis_c() +
+   theme_minimal()
+ 
+ # Display the plot
+ print(gam_map_with_stippling_djf)
+ 
+#####
+##  stippling MAM 
+##### 
+ # Define resolutions
+ gam_resolution <- 1   # Resolution for GAM predictions
+ stipple_resolution <- 5  # Coarser resolution for undersampling shading
+ 
+ # Step 1: Aggregate Argo float locations to 10° resolution
+ argo_bins <- df_argo_clean %>%
+   filter(month(TIME) %in% c(4, 5, 6))  %>%
+   mutate(
+     lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+   ) %>%
+   group_by(lon_bin_stipple, lat_bin_stipple) %>%
+   summarize(count = n(), .groups = "drop")  # Count profiles per 10° bin
+ 
+ # Step 2: Identify undersampled areas
+ undersampled <- argo_bins %>%
+   filter(count < 5)  # Define threshold for undersampling
+ 
+ # Step 3: Prepare GAM prediction data at 1° resolution
+ # Assuming `prediction_grid` is your GAM prediction output (from predict_gam)
+ prediction_grid <- pred_mam_subd  # Example for DJF GAM predictions
+ 
+ # Keep GAM grid at 1° resolution
+ prediction_grid <- prediction_grid %>%
+   mutate(
+     lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
+   )
+ 
+ # Step 4: Merge GAM predictions with undersampled areas
+ # Add a TRUE/FALSE column indicating undersampled cells at 10° resolution
+ prediction_grid <- prediction_grid %>%
+   left_join(undersampled, by = c("lon_bin_stipple" = "lon_bin_stipple",
+                                  "lat_bin_stipple" = "lat_bin_stipple")) %>%
+   mutate(
+     undersampled = ifelse(is.na(count), FALSE, TRUE)  # Mark as TRUE if undersampled
+   ) 
+ 
+ # Step 5: Plot GAM map with stippling for undersampled areas
+ gam_map_with_stippling_mam <- ggplot() +
+   # GAM predictions as a tile layer at 1° resolution
+   geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
+   geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = proportion),
+                color = "white", alpha = 0.3) +
+   # Add stippling for unwhitedersampled areas at 10° resolution
+   geom_point(data = filter(prediction_grid, undersampled == TRUE),
+              aes(x = lon_bin_stipple, y = lat_bin_stipple),
+              color = "white", alpha = 0.6, size = 0.25, shape = 20) +
+   # World map for context
+   geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
+   coord_sf(expand = FALSE) +
+   labs(
+     title = "GAM-Estimated Probability of Subduction Events (DJF)",
+     x = "Longitude",
+     y = "Latitude",
+     fill = "Probability"
+   ) +
+   scale_fill_viridis_c() +
+   theme_minimal()
+ 
+ # Display the plot
+ print(gam_map_with_stippling_mam)
+ 
+   
+   
 ###############################################################################
 # Done!
 ###############################################################################
@@ -487,21 +622,12 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
 #   each with a discrete color scale and a uniform range per dataset.
 # - The scale is set by the global min (0) and max proportion among 
 #   the four seasons, so they're all directly comparable. 
-# - Adjust 'binwidth' in 'make_discrete_scale()' if you want finer or coarser bins.
+# - Adjust 'binwidth' in 'make_discrete_scale()' if I want finer or coarser bins.
 
 ###############################################################################
 # Done!
 ###############################################################################
 
-# - You now have 2 sets of maps (subduction vs. carbon subduction), each with 
-#   4 seasons. 
-# - Adjust 'k_value', 'step' in 'create_prediction_grid()', and color scales 
-#   as needed for best results.
-# - If you want a consistent color scale across all seasons, you can find the 
-#   max proportion across all prediction grids and use e.g. 
-#   scale_fill_viridis_c(limits = c(0, global_max)).
-
- 
 # Now let's do histograms faceted by region showing the probability of (carbon) subduction
 # by months :
  
@@ -591,3 +717,44 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  ggsave("figures/seasonal_subduction_by_region.png", plot = plot_subduction, width = 10, height = 8)
  ggsave("figures/seasonal_carbon_subduction_by_region.png", plot = plot_carbon_subduction, width = 10, height = 8)
  
+ ### Add a statistical test to bring evidence against H0 that the monthly frequency of subduction and of carbon subduction
+ # sampled from a uniform distribution to test whether subduction is or not seasonal 
+ # Remove NA months from both datasets
+ monthly_probs_subduction <- monthly_probs_subduction %>% filter(!is.na(month))
+ monthly_probs_carbon <- monthly_probs_carbon %>% filter(!is.na(month))
+ 
+ # Function to test uniformity for each region
+ test_seasonality_proportions <- function(monthly_probs) {
+   monthly_probs %>%
+     group_by(region) %>%
+     summarize(
+       chisq_stat = chisq.test(
+         x = proportion * count_total,  # Observed weighted counts
+         p = rep(1 / 12, 12),           # Expected uniform proportions
+         rescale.p = TRUE               # Rescale expected to match total
+       )$statistic,
+       p_value = chisq.test(
+         x = proportion * count_total,
+         p = rep(1 / 12, 12),
+         rescale.p = TRUE
+       )$p.value,
+       .groups = "drop"
+     )
+ }
+ 
+ 
+ t <- monthly_probs_carbon %>% filter(region == "North Atlantic")
+ chisq.test(t$count_event)
+ 
+ # Test seasonality for subduction
+ seasonality_test_subduction <- test_seasonality_proportions(monthly_probs_subduction)
+ 
+ # Test for carbon subduction
+ seasonality_test_carbon <- test_seasonality_proportions(monthly_probs_carbon)
+ 
+ # Display results
+ print("Subduction Seasonality Test:")
+ print(seasonality_test_subduction)
+ 
+ print("Carbon Subduction Seasonality Test:")
+ print(seasonality_test_carbon)

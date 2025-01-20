@@ -97,12 +97,14 @@ df_argo_clean <- df_argo %>%
 write_csv(df_complete_clean,file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
 write_csv(df_argo_clean, file = "/data/GLOBARGO/src/data/df_argo_loc.csv")
 
+df_complete_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_eddy_subduction_anom.csv")
+
 
 
 # Load datasets of manually verified detected subduction events with carbon  
 # Load datasets for carbon classification
-df_carbon_cat1 <- read_csv("~/Documents/GLOBARGO/src/data/carbon_cat1_class.csv")
-df_carbon_cat2 <- read_csv("~/Documents/GLOBARGO/src/data/carbon_cat2_class.csv")
+df_carbon_cat1 <- read_csv("data/carbon_cat1_class.csv")
+df_carbon_cat2 <- read_csv("data/carbon_cat2_class.csv")
 
 # Remove "_plot" suffix and ensure WMO is numeric
 df_carbon_cat1 <- df_carbon_cat1 %>%
