@@ -478,6 +478,82 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  ggsave("figures/TimeSpaceVar/4SEASONS/gam_carbon_subduction_discrete_4seasons.png",
         combined_carb, width = 14, height = 10)
 
+ ###########################################################
+ ### 7. Add stippling DJF with the SAME discrete subd_scale
+ ############################################################
+ 
+ # We assume subd_scale is already defined, e.g.:
+ # subd_scale <- make_discrete_scale(subd_min, subd_max, binwidth = 0.05)
+ 
+ gam_resolution <- 1       # Resolution for GAM predictions
+ stipple_resolution <- 5   # Coarser resolution for stippling
+ 
+ # 1) Aggregate Argo float locations to 5° resolution for stippling
+ argo_bins <- df_argo_clean %>%
+   filter(month(TIME) %in% c(12, 1, 2)) %>%
+   mutate(
+     lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+   ) %>%
+   group_by(lon_bin_stipple, lat_bin_stipple) %>%
+   summarize(count = n(), .groups = "drop")  # Count profiles per 5° bin
+ 
+ # 2) Identify undersampled areas
+ undersampled <- argo_bins %>%
+   filter(count < 5)  # or any other threshold you prefer
+ 
+ # 3) Grab DJF prediction grid from the existing subduction GAM results
+ #    pred_djf_subd is the data frame with columns: lon_bin, lat_bin, proportion
+ prediction_grid <- pred_djf_subd  
+ 
+ # Keep track of the coarser bins for stippling
+ prediction_grid <- prediction_grid %>%
+   mutate(
+     lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
+   )
+ 
+ # 4) Merge GAM predictions with undersampled areas
+ prediction_grid <- prediction_grid %>%
+   left_join(undersampled,
+             by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
+   mutate(
+     undersampled = ifelse(is.na(count), FALSE, TRUE) 
+   ) 
+ 
+ # 5) Plot with the shared 'subd_scale' instead of scale_fill_viridis_c()
+ gam_map_with_stippling_djf <- ggplot() +
+   # Tile layer of subduction probability at 1° resolution
+   geom_tile(data = prediction_grid,
+             aes(x = lon_bin, y = lat_bin, fill = proportion)) +
+   geom_contour(data = prediction_grid,
+                aes(x = lon_bin, y = lat_bin, z = proportion),
+                color = "white", alpha = 0.3) +
+   # Add stippling where undersampled == TRUE
+   geom_point(
+     data = filter(prediction_grid, undersampled == TRUE),
+     aes(x = lon_bin_stipple, y = lat_bin_stipple),
+     color = "white", alpha = 0.6, size = 0.25, shape = 20
+   ) +
+   # World map for context
+   geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
+   coord_sf(expand = FALSE) +
+   labs(
+     title = "GAM-Estimated Probability of Subduction Events (DJF + Stippling)",
+     x = "Longitude",
+     y = "Latitude",
+     fill = "Probability"
+   ) +
+   # Here is where we reuse the COMMON discrete scale
+   subd_scale +
+   theme_minimal()
+ 
+ # Display or save the final figure
+ gam_map_with_stippling_djf
+ # ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_djf_stipple_sameScale.png",
+ #        gam_map_with_stippling_djf, width = 10, height = 7)
+ 
+ 
  
  ###########################################################
  ### 7. Add stippling DJF ########################################
@@ -488,7 +564,7 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  
  # Step 1: Aggregate Argo float locations to 10° resolution
  argo_bins <- df_argo_clean %>%
-   filter(month(TIME) %in% c(1, 2, 3))  %>%
+   filter(month(TIME) %in% c(12, 1, 2))  %>%
    mutate(
      lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
      lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
@@ -554,7 +630,7 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  
  # Step 1: Aggregate Argo float locations to 10° resolution
  argo_bins <- df_argo_clean %>%
-   filter(month(TIME) %in% c(4, 5, 6))  %>%
+   filter(month(TIME) %in% c(3, 4, 5))  %>%
    mutate(
      lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
      lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
@@ -600,7 +676,7 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
    geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
    coord_sf(expand = FALSE) +
    labs(
-     title = "GAM-Estimated Probability of Subduction Events (DJF)",
+     title = "GAM-Estimated Probability of Subduction Events (MAM)",
      x = "Longitude",
      y = "Latitude",
      fill = "Probability"
@@ -612,7 +688,137 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  print(gam_map_with_stippling_mam)
  
    
-   
+ # Define resolutions
+ gam_resolution <- 1   # Resolution for GAM predictions
+ stipple_resolution <- 5  # Coarser resolution for undersampling shading
+ 
+ # Step 1: Aggregate Argo float locations to 10° resolution
+ argo_bins <- df_argo_clean %>%
+   filter(month(TIME) %in% c(6, 7, 8))  %>%
+   mutate(
+     lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+   ) %>%
+   group_by(lon_bin_stipple, lat_bin_stipple) %>%
+   summarize(count = n(), .groups = "drop")  # Count profiles per 10° bin
+ 
+ # Step 2: Identify undersampled areas
+ undersampled <- argo_bins %>%
+   filter(count < 5)  # Define threshold for undersampling
+ 
+ # Step 3: Prepare GAM prediction data at 1° resolution
+ # Assuming `prediction_grid` is your GAM prediction output (from predict_gam)
+ prediction_grid <- pred_jja_subd  # Example for DJF GAM predictions
+ 
+ # Keep GAM grid at 1° resolution
+ prediction_grid <- prediction_grid %>%
+   mutate(
+     lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
+   )
+ 
+ # Step 4: Merge GAM predictions with undersampled areas
+ # Add a TRUE/FALSE column indicating undersampled cells at 10° resolution
+ prediction_grid <- prediction_grid %>%
+   left_join(undersampled, by = c("lon_bin_stipple" = "lon_bin_stipple",
+                                  "lat_bin_stipple" = "lat_bin_stipple")) %>%
+   mutate(
+     undersampled = ifelse(is.na(count), FALSE, TRUE)  # Mark as TRUE if undersampled
+   ) 
+ 
+ # Step 5: Plot GAM map with stippling for undersampled areas
+ gam_map_with_stippling_jja <- ggplot() +
+   # GAM predictions as a tile layer at 1° resolution
+   geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
+   geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = proportion),
+                color = "white", alpha = 0.3) +
+   # Add stippling for unwhitedersampled areas at 10° resolution
+   geom_point(data = filter(prediction_grid, undersampled == TRUE),
+              aes(x = lon_bin_stipple, y = lat_bin_stipple),
+              color = "white", alpha = 0.6, size = 0.25, shape = 20) +
+   # World map for context
+   geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
+   coord_sf(expand = FALSE) +
+   labs(
+     title = "GAM-Estimated Probability of Subduction Events (JJA)",
+     x = "Longitude",
+     y = "Latitude",
+     fill = "Probability"
+   ) +
+   scale_fill_viridis_c() +
+   theme_minimal()
+ 
+ # Display the plot
+ print(gam_map_with_stippling_jja)
+ 
+ 
+ # SON #
+ 
+ # Define resolutions
+ gam_resolution <- 1   # Resolution for GAM predictions
+ stipple_resolution <- 5  # Coarser resolution for undersampling shading
+ 
+ # Step 1: Aggregate Argo float locations to 10° resolution
+ argo_bins <- df_argo_clean %>%
+   filter(month(TIME) %in% c(9, 10, 11))  %>%
+   mutate(
+     lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+   ) %>%
+   group_by(lon_bin_stipple, lat_bin_stipple) %>%
+   summarize(count = n(), .groups = "drop")  # Count profiles per 10° bin
+ 
+ # Step 2: Identify undersampled areas
+ undersampled <- argo_bins %>%
+   filter(count < 5)  # Define threshold for undersampling
+ 
+ # Step 3: Prepare GAM prediction data at 1° resolution
+ # Assuming `prediction_grid` is your GAM prediction output (from predict_gam)
+ prediction_grid <- pred_son_subd  
+ 
+ # Keep GAM grid at 1° resolution
+ prediction_grid <- prediction_grid %>%
+   mutate(
+     lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
+     lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
+   )
+ 
+ # Step 4: Merge GAM predictions with undersampled areas
+ # Add a TRUE/FALSE column indicating undersampled cells at 10° resolution
+ prediction_grid <- prediction_grid %>%
+   left_join(undersampled, by = c("lon_bin_stipple" = "lon_bin_stipple",
+                                  "lat_bin_stipple" = "lat_bin_stipple")) %>%
+   mutate(
+     undersampled = ifelse(is.na(count), FALSE, TRUE)  # Mark as TRUE if undersampled
+   ) 
+ 
+ # Step 5: Plot GAM map with stippling for undersampled areas
+ gam_map_with_stippling_son <- ggplot() +
+   # GAM predictions as a tile layer at 1° resolution
+   geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
+   geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = proportion),
+                color = "white", alpha = 0.3) +
+   # Add stippling for unwhitedersampled areas at 10° resolution
+   geom_point(data = filter(prediction_grid, undersampled == TRUE),
+              aes(x = lon_bin_stipple, y = lat_bin_stipple),
+              color = "white", alpha = 0.6, size = 0.25, shape = 20) +
+   # World map for context
+   geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
+   coord_sf(expand = FALSE) +
+   labs(
+     title = "GAM-Estimated Probability of Subduction Events (JJA)",
+     x = "Longitude",
+     y = "Latitude",
+     fill = "Probability"
+   ) +
+   scale_fill_viridis_c() +
+   theme_minimal()
+ 
+ # Display the plot
+ print(gam_map_with_stippling_son)
+ 
+ 
+  
 ###############################################################################
 # Done!
 ###############################################################################
@@ -758,3 +964,145 @@ combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
  
  print("Carbon Subduction Seasonality Test:")
  print(seasonality_test_carbon)
+ 
+ 
+ 
+ ################################################""
+ #################################################"
+ 
+ # Gather all subduction probability values across the four seasons
+ common_subd_values <- c(
+   pred_djf_subd$proportion,
+   pred_mam_subd$proportion,
+   pred_jja_subd$proportion,
+   pred_son_subd$proportion
+ )
+ 
+ common_subd_min <- 0   # Typically 0
+ common_subd_max <- max(common_subd_values, na.rm = TRUE)
+ 
+ # Option 1: Using a discrete binned scale 
+ #           (If you already have a function `make_discrete_scale`, use it here.)
+ make_discrete_scale <- function(prob_min, prob_max, binwidth = 0.05) {
+   breaks_vec <- seq(prob_min, prob_max, by = binwidth)
+   scale_fill_viridis_b(
+     name = "Probability",
+     breaks = breaks_vec,
+     limits = c(prob_min, prob_max),
+     oob = scales::squish
+   )
+ }
+ subd_scale <- make_discrete_scale(common_subd_min, common_subd_max, binwidth = 0.05)
+ 
+ # OR Option 2: A continuous scale — e.g.:
+ # subd_scale <- scale_fill_viridis_c(limits = c(common_subd_min, common_subd_max),
+ #                                    oob = scales::squish)
+ #
+ # Either way, you'll have a single color scale object, e.g. "subd_scale".
+ 
+ 
+ library(dplyr)
+ library(ggplot2)
+ library(sf)
+ library(patchwork)
+ 
+ create_stippled_map <- function(df_argo_clean,
+                                 pred_grid,          # e.g. pred_djf_subd
+                                 months,             # c(12,1,2) for DJF
+                                 resolution = 5,     # coarser resolution for stippling
+                                 threshold = 5,      # <5 profiles = undersampled
+                                 season_label = "DJF",
+                                 color_scale = subd_scale) {
+   
+   # 1) Coarse bin Argo data for "undersampled" identification
+   argo_bins <- df_argo_clean %>%
+     filter(lubridate::month(TIME) %in% months) %>%
+     mutate(
+       lon_bin_stipple = floor(LONGITUDE / resolution) * resolution,
+       lat_bin_stipple = floor(LATITUDE / resolution) * resolution
+     ) %>%
+     group_by(lon_bin_stipple, lat_bin_stipple) %>%
+     summarize(count = n(), .groups = "drop")
+   
+   # 2) Identify undersampled
+   undersampled <- argo_bins %>%
+     filter(count < threshold)
+   
+   # 3) Prepare the prediction data for mapping
+   prediction_grid <- pred_grid %>%
+     mutate(
+       lon_bin_stipple = floor(lon_bin / resolution) * resolution,
+       lat_bin_stipple = floor(lat_bin / resolution) * resolution
+     )
+   
+   # 4) Merge with undersampled info
+   prediction_grid <- prediction_grid %>%
+     left_join(undersampled,
+               by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
+     mutate(undersampled = ifelse(is.na(count), FALSE, TRUE))
+   
+   # 5) Plot
+   p <- ggplot() +
+     geom_tile(data = prediction_grid,
+               aes(x = lon_bin, y = lat_bin, fill = proportion)) +
+     geom_contour(data = prediction_grid,
+                  aes(x = lon_bin, y = lat_bin, z = proportion),
+                  color = "white", alpha = 0.3) +
+     geom_point(
+       data = filter(prediction_grid, undersampled == TRUE),
+       aes(x = lon_bin_stipple, y = lat_bin_stipple),
+       color = "white", alpha = 0.6, size = 0.25, shape = 20
+     ) +
+     geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
+     coord_sf(expand = FALSE) +
+     labs(
+       title = paste("GAM-Estimated Probability of Subduction Events (", season_label, ")", sep=""),
+       x = "Longitude", 
+       y = "Latitude",
+       fill = "Probability"
+     ) +
+     # Use the *common* scale
+     color_scale +
+     theme_minimal()
+   
+   return(p)
+ }
+ 
+ 
+ # Make sure you have your 'world' sf object
+ # e.g. world <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
+ 
+ gam_map_with_stippling_djf <- create_stippled_map(
+   df_argo_clean, pred_djf_subd, months = c(12,1,2),
+   resolution = 5, threshold = 5, season_label = "DJF",
+   color_scale = subd_scale  # the discrete scale we defined above
+ )
+ 
+ gam_map_with_stippling_mam <- create_stippled_map(
+   df_argo_clean, pred_mam_subd, months = c(3,4,5),
+   resolution = 5, threshold = 5, season_label = "MAM",
+   color_scale = subd_scale
+ )
+ 
+ gam_map_with_stippling_jja <- create_stippled_map(
+   df_argo_clean, pred_jja_subd, months = c(6,7,8),
+   resolution = 5, threshold = 5, season_label = "JJA",
+   color_scale = subd_scale
+ )
+ 
+ gam_map_with_stippling_son <- create_stippled_map(
+   df_argo_clean, pred_son_subd, months = c(9,10,11),
+   resolution = 5, threshold = 5, season_label = "SON",
+   color_scale = subd_scale
+ )
+ 
+ # Combine into one 2×2 figure
+ combined_stippling_subd <- (gam_map_with_stippling_djf + gam_map_with_stippling_mam) /
+   (gam_map_with_stippling_jja + gam_map_with_stippling_son) +
+   plot_annotation(title = "GAM-Estimated Probability of Subduction Events (All Seasons + Stippling)")
+ 
+ # Display or save
+ print(combined_stippling_subd)
+ ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_discrete_4seasons_stippling.png",
+        combined_stippling_subd, width = 14, height = 10)
+ 
