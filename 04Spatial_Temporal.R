@@ -20,6 +20,9 @@ library(sp)
 library(spdep)
 library(mgcv)
 
+# Resolve function conflicts in favor of dplyr
+conflict_prefer("select", "dplyr")
+conflict_prefer("filter", "dplyr")
 
 # Two datasets, one dataset df_complete_clean which contains time, location of the 4122 anomalous Argo profiles detected
 # df_argo_clean which contains time and location of all the 125,836 Argo profiles (anomalous and non-anomalous)
@@ -66,12 +69,12 @@ wld.rob.sf <-  st_transform(wld.new,
 
 
 # Convert data frames to spatial objects and transform to Robinson projection
-df_argo_sf <- df_argo %>%
+df_argo_sf <- df_argo_clean %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%  # Remove missing values
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
   st_transform(crs = "+proj=robin")
 
-df_complete_sf <- df_complete %>%
+df_complete_sf <- df_complete_clean %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%  # Remove missing values
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
   st_transform(crs = "+proj=robin")
@@ -80,8 +83,8 @@ df_complete_sf <- df_complete %>%
 map_total_argo_prof <- ggplot() +
   geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
   geom_sf(data = df_argo_sf, aes(geometry = geometry), color = "blue", alpha = 0.1, size = 0.1) +
-  coord_sf(crs = "+proj=robin lon_0=180", datum = NA) +
-  labs(title = "Total Argo Profiles",
+  coord_sf(crs = "+proj=robin", datum = NA) +
+  labs(title = "125,836 Argo Profiles",
        x = "Longitude",
        y = "Latitude") +
   theme_minimal() +
@@ -91,16 +94,18 @@ map_total_argo_prof <- ggplot() +
 ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/map_total_argo_prof.jpg",map_total_argo_prof)
 
 # Plot detected subduction events
+
 map_detected_events <- ggplot() +
-  geom_sf(data = wld.rob.sf, fill = "gray80", color = "gray") +
-  geom_sf(data = df_complete_sf, aes(geometry = geometry), color = "red", alpha = 0.5, size = 0.3) +
-  coord_sf(crs = "+proj=robin lon_0=180", datum = NA) +
-  labs(title = "Detected Subduction Events",
+  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
+  geom_sf(data = df_complete_sf, aes(geometry = geometry), color = "red", alpha = 0.1, size = 0.1) +
+  coord_sf(crs = "+proj=robin", datum = NA) +
+  labs(title = "4,390 subduction anomalies",
        x = "Longitude",
        y = "Latitude") +
   theme_minimal() +
   theme(panel.grid.major = element_line(color = "gray90")) +
   annotation_north_arrow(location = "tl")
+
 
 ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/map_detected_events.jpg",map_detected_events)
 
