@@ -83,7 +83,7 @@ df_abs_sal_unique <- df_abs_sal %>%
 # Perform the join again with the unique rows
 df_complete <- df_final %>%
   left_join(df_abs_sal_unique %>% 
-              select(WMO, CYCLE_NUMBER, LATITUDE, LONGITUDE, TIME), 
+              select(PRES_ADJUSTED,WMO, CYCLE_NUMBER, LATITUDE, LONGITUDE, TIME), 
             by = c("WMO", "CYCLE_NUMBER"))
 
 # Clean subduction events data
@@ -122,11 +122,11 @@ df_carbon_final <- bind_rows(df_carbon_cat1, df_carbon_cat2) %>%
 
 # Add location and time data from df_abs_sal
 df_carbon_complete <- df_carbon_final %>%
-  left_join(df_abs_sal_unique %>% select(WMO, CYCLE_NUMBER, LATITUDE, LONGITUDE, TIME), 
+  left_join(df_abs_sal_unique %>% select(WMO,PRES_ADJUSTED, CYCLE_NUMBER, LATITUDE, LONGITUDE, TIME), 
             by = c("WMO", "CYCLE_NUMBER"))
 
 df_carbon_complete_clean <- df_carbon_complete %>%
   filter(!is.na(LONGITUDE) & !is.na(LATITUDE) & is.finite(LONGITUDE) & is.finite(LATITUDE))
 
 # Save the cleaned carbon data
-write_csv(df_carbon_complete_clean, file = "~/Documents/GLOBARGO/src/data/df_carbon_subduction_anom.csv")
+write_csv(df_carbon_complete_clean, file = "data/df_carbon_subduction_anom.csv")
