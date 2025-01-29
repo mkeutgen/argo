@@ -20,12 +20,15 @@ library(sp)
 library(spdep)
 library(mgcv)
 library(patchwork)
+
+library(fitdistrplus)
+library(poweRlaw)
 # Resolve function conflicts in favor of dplyr
 conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
 
 Sys.setlocale(category = "LC_ALL", locale = "en_US.UTF-8")
-
+setwd("/data/GLOBARGO/src/")
 df_argo_clean <- read_csv("data/df_argo_loc.csv")
 df_complete_clean <- read_csv("data/df_eddy_subduction_anom.csv")
 df_carbon_clean <- read_csv("data/df_carbon_subduction_anom.csv")
@@ -172,17 +175,19 @@ assign_bins <- function(df) {
 }
 
 # Assign bins to Argo profiles and anomalies
+df_argo_full <- assign_bins(df_argo_clean)
 df_argo_djf <- assign_bins(df_argo_djf)
 df_argo_mam <- assign_bins(df_argo_mam)
 df_argo_jja <- assign_bins(df_argo_jja)
 df_argo_son <- assign_bins(df_argo_son)
 
+df_complete_full <- assign_bins(df_complete_clean)
 df_complete_djf <- assign_bins(df_complete_djf)
 df_complete_mam <- assign_bins(df_complete_mam)
 df_complete_jja <- assign_bins(df_complete_jja)
 df_complete_son <- assign_bins(df_complete_son)
 
-
+df_carbon_full <- assign_bins(df_carbon_clean)
 df_carbon_djf <- assign_bins(df_carbon_djf)
 df_carbon_mam <- assign_bins(df_carbon_mam)
 df_carbon_jja <- assign_bins(df_carbon_jja)
@@ -211,14 +216,16 @@ compute_counts <- function(df_argo, df_complete) {
   
   return(merged_counts)
 }
+# Compute merged_counts of SUBDUCTION for whole year and each season
 
-# Compute merged_counts of SUBDUCTION for each season
+merged_counts_full <- compute_counts(df_argo_full,df_complete_full)
 merged_counts_djf <- compute_counts(df_argo_djf, df_complete_djf)
 merged_counts_mam <- compute_counts(df_argo_mam, df_complete_mam)
 merged_counts_jja <- compute_counts(df_argo_jja, df_complete_jja)
 merged_counts_son <- compute_counts(df_argo_son, df_complete_son)
 
 # Compute merged_counts of CARBON SUBDUCTION for each season
+merged_carbon_counts_full <- compute_counts(df_argo_full,df_carbon_full)
 merged_carbon_counts_djf <- compute_counts(df_argo_djf, df_carbon_djf)
 merged_carbon_counts_mam <- compute_counts(df_argo_mam, df_carbon_mam)
 merged_carbon_counts_jja <- compute_counts(df_argo_jja, df_carbon_jja)
@@ -226,6 +233,17 @@ merged_carbon_counts_son <- compute_counts(df_argo_son, df_carbon_son)
 
 
 # Create proportion maps of SUBDUCTION (w/o carbon) without saving them to files directly
+
+prop_map_full <- ggplot(merged_counts_full, aes(x = lon_bin, y = lat_bin)) +
+  geom_tile(aes(fill = proportion)) +
+  geom_contour(aes(z = proportion), color = "white", alpha = 0.1) +
+  geom_sf(data = world, fill = "gray80", color = "black", inherit.aes = FALSE) +
+  coord_sf(xlim = range(merged_counts_djf$lon_bin), ylim = range(merged_counts_djf$lat_bin)) +
+  scale_fill_viridis_c() +
+  labs(title = "Proportion of Subduction Events (whole year)", x = "Longitude", y = "Latitude", fill = "Proportion") +
+  theme_minimal()
+
+
 prop_map_djf <- ggplot(merged_counts_djf, aes(x = lon_bin, y = lat_bin)) +
   geom_tile(aes(fill = proportion)) +
   geom_contour(aes(z = proportion), color = "white", alpha = 0.1) +
@@ -271,6 +289,18 @@ combined_proportion_maps <- prop_map_djf + prop_map_mam + prop_map_jja + prop_ma
 ggsave(filename = "figures/TimeSpaceVar/4SEASONS/combined_proportion_maps.png", plot = combined_proportion_maps, width = 15, height = 12)
 
 # Create proportion maps of CARBON SUBDUCTION without saving them to files directly
+prop_map_full_carbon <- ggplot(merged_carbon_counts_full, aes(x = lon_bin, y = lat_bin)) +
+  geom_tile(aes(fill = proportion)) +
+  geom_contour(aes(z = proportion), color = "white", alpha = 0.1) +
+  geom_sf(data = world, fill = "gray80", color = "black", inherit.aes = FALSE) +
+  coord_sf(xlim = range(merged_counts_djf$lon_bin), ylim = range(merged_counts_djf$lat_bin)) +
+  scale_fill_viridis_c() +
+  labs(title = "Proportion of Subduction Events (whole year)", x = "Longitude", y = "Latitude", fill = "Proportion") +
+  theme_minimal()
+
+
+
+
 prop_map_djf_carbon <- ggplot(merged_carbon_counts_djf, aes(x = lon_bin, y = lat_bin)) +
   geom_tile(aes(fill = proportion)) +
   geom_contour(aes(z = proportion), color = "white", alpha = 0.1) +
@@ -411,18 +441,25 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
 ###############################################################################
 
 # Fit GAMs
-gam_djf_subd <- fit_gam_season(merged_counts_djf,  k_value = 300)
-gam_mam_subd <- fit_gam_season(merged_counts_mam,  k_value = 300)
-gam_jja_subd <- fit_gam_season(merged_counts_jja,  k_value = 300)
-gam_son_subd <- fit_gam_season(merged_counts_son,  k_value = 300)
+
+gam_full_subd <- fit_gam_season(merged_counts_full,  k_value = 600)
+# High k variant, k = 600 (originally it was 300)
+gam_djf_subd <- fit_gam_season(merged_counts_djf,  k_value = 600)
+gam_mam_subd <- fit_gam_season(merged_counts_mam,  k_value = 600)
+gam_jja_subd <- fit_gam_season(merged_counts_jja,  k_value = 600)
+gam_son_subd <- fit_gam_season(merged_counts_son,  k_value = 600)
 
 # Predict
+pred_full_subd <- predict_gam(gam_full_subd, merged_counts_full, step = 1)
 pred_djf_subd <- predict_gam(gam_djf_subd, merged_counts_djf, step = 1)
 pred_mam_subd <- predict_gam(gam_mam_subd, merged_counts_mam, step = 1)
 pred_jja_subd <- predict_gam(gam_jja_subd, merged_counts_jja, step = 1)
 pred_son_subd <- predict_gam(gam_son_subd, merged_counts_son, step = 1)
 
 # Determine global min/max for subduction proportions
+subd_max_full <- max(pred_full_subd$proportion)
+subd_full_scale <- make_discrete_scale(0,subd_max_full,binwidth = 0.05)
+
 subd_values <- c(pred_djf_subd$proportion, pred_mam_subd$proportion,
                  pred_jja_subd$proportion, pred_son_subd$proportion)
 subd_min <- 0  # typically 0
@@ -433,6 +470,9 @@ subd_max <- max(subd_values, na.rm = TRUE)
 subd_scale <- make_discrete_scale(subd_min, subd_max, binwidth = 0.05)
 
 # Plot each season with the common discrete scale
+
+map_subd_full <- plot_gam_map(pred_full_subd, world, "Whole Year", "Subduction", subd_full_scale)
+
 map_subd_djf <- plot_gam_map(pred_djf_subd, world, "DJF", "Subduction", subd_scale)
 map_subd_mam <- plot_gam_map(pred_mam_subd, world, "MAM", "Subduction", subd_scale)
 map_subd_jja <- plot_gam_map(pred_jja_subd, world, "JJA", "Subduction", subd_scale)
@@ -845,6 +885,22 @@ print(gam_map_with_stippling_son)
 
 # Add Month and Region Information to Data
 # Splitting Northern Tropics and Southern Tropics as a sanity check (should not be seasonal there)
+ add_month_region <- function(df) {
+   df %>%
+     mutate(
+       month = month(TIME, label = TRUE, abbr = TRUE),  # Extract month as a factor
+       region = case_when(
+         LATITUDE > 30 & LONGITUDE >= -100 & LONGITUDE <= 20 ~ "North Atlantic",  # Above 30°N
+         LATITUDE > 30 & (LONGITUDE < -100 | LONGITUDE > 120) ~ "North Pacific",  # Above 30°N
+         LATITUDE >= 0 & LATITUDE <= 30 ~ "Northern Tropics",                     # 0° to 30°N
+         LATITUDE < 0 & LATITUDE >= -30 ~ "Southern Tropics",                     # 0° to 30°S
+         LATITUDE < -30 ~ "Southern Ocean",                                       # Below 30°S
+         TRUE ~ NA_character_  # Exclude undefined regions
+       )
+     )
+ }
+
+# Not Splitting Northern Tropics and Southern Tropics as a sanity check (should not be seasonal there)
 # add_month_region <- function(df) {
 #   df %>%
 #     mutate(
@@ -852,54 +908,38 @@ print(gam_map_with_stippling_son)
 #       region = case_when(
 #         LATITUDE > 30 & LONGITUDE >= -100 & LONGITUDE <= 20 ~ "North Atlantic",  # Above 30°N
 #         LATITUDE > 30 & (LONGITUDE < -100 | LONGITUDE > 120) ~ "North Pacific",  # Above 30°N
-#         LATITUDE >= 0 & LATITUDE <= 30 ~ "Northern Tropics",                     # 0° to 30°N
-#         LATITUDE < 0 & LATITUDE >= -30 ~ "Southern Tropics",                     # 0° to 30°S
+#         LATITUDE <= 30 & LATITUDE >= -30 ~ "Tropics",                     # 0° to 30°S
 #         LATITUDE < -30 ~ "Southern Ocean",                                       # Below 30°S
 #         TRUE ~ NA_character_  # Exclude undefined regions
 #       )
 #     )
 # }
-
-
-add_month_region <- function(df) {
-  df %>%
-    mutate(
-      month = month(TIME, label = TRUE, abbr = TRUE),  # Extract month as a factor
-      region = case_when(
-        LATITUDE > 30 & LONGITUDE >= -100 & LONGITUDE <= 20 ~ "North Atlantic",  # Above 30°N
-        LATITUDE > 30 & (LONGITUDE < -100 | LONGITUDE > 120) ~ "North Pacific",  # Above 30°N
-        LATITUDE <= 30 & LATITUDE >= -30 ~ "Tropics",                     # 0° to 30°S
-        LATITUDE < -30 ~ "Southern Ocean",                                       # Below 30°S
-        TRUE ~ NA_character_  # Exclude undefined regions
-      )
-    )
-}
-
-
-df_argo_clean <- add_month_region(df_argo_clean)
-df_complete_clean <- add_month_region(df_complete_clean)
-df_carbon_clean <- add_month_region(df_carbon_clean)
-
-# Step 2: Compute Probabilities by Region and Month
-compute_monthly_probabilities <- function(df_argo, df_events) {
-  # Total Argo profiles by region and month
-  total_counts <- df_argo %>%
-    group_by(region, month) %>%
-    summarize(count_total = n(), .groups = "drop")
-  
-  # Subduction events by region and month
-  event_counts <- df_events %>%
-    group_by(region, month) %>%
-    summarize(count_event = n(), .groups = "drop")
-  
-  # Merge and compute proportions
-  merged <- full_join(total_counts, event_counts, by = c("region", "month")) %>%
-    mutate(
-      count_event = replace_na(count_event, 0),
-      proportion = ifelse(count_total > 0, count_event / count_total, NA)
-    )
-  return(merged)
-}
+# 
+# 
+ df_argo_clean <- add_month_region(df_argo_clean)
+ df_complete_clean <- add_month_region(df_complete_clean)
+ df_carbon_clean <- add_month_region(df_carbon_clean)
+# 
+# # Step 2: Compute Probabilities by Region and Month
+ compute_monthly_probabilities <- function(df_argo, df_events) {
+   # Total Argo profiles by region and month
+   total_counts <- df_argo %>%
+     group_by(region, month) %>%
+     summarize(count_total = n(), .groups = "drop")
+   
+   # Subduction events by region and month
+   event_counts <- df_events %>%
+     group_by(region, month) %>%
+     summarize(count_event = n(), .groups = "drop")
+   
+   # Merge and compute proportions
+   merged <- full_join(total_counts, event_counts, by = c("region", "month")) %>%
+     mutate(
+       count_event = replace_na(count_event, 0),
+       proportion = ifelse(count_total > 0, count_event / count_total, NA)
+     )
+   return(merged)
+ }
 
 # Compute probabilities for subduction and carbon subduction
 monthly_probs_subduction <- compute_monthly_probabilities(df_argo_clean, df_complete_clean)
@@ -984,6 +1024,417 @@ print(seasonality_test_subduction)
 
 print("Carbon Subduction Seasonality Test:")
 print(seasonality_test_carbon)
+
+
+#############################################
+#### SEASONALITY OF DEPTH ###################
+#############################################
+
+# 1. Summarize depth (pressure) by region and month
+df_depth_summary <- df_complete_clean %>%
+  filter(!is.na(region), !is.na(month)) %>%
+  group_by(region, month) %>%
+  summarize(
+    n                = n(),
+    median_pressure  = median(PRES_ADJUSTED, na.rm = TRUE),
+    iqr_pressure     = IQR(PRES_ADJUSTED, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_carbon_depth_summary <- df_carbon_clean %>%
+  filter(!is.na(region), !is.na(month)) %>%
+  group_by(region, month) %>%
+  summarize(
+    n                = n(),
+    median_pressure  = median(PRES_ADJUSTED, na.rm = TRUE),
+    iqr_pressure     = IQR(PRES_ADJUSTED, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 1. Create a summary dataset of median depth per region and month
+df_median_line <- df_complete_clean %>%
+  filter(!is.na(region), !is.na(month)) %>%
+  group_by(region, month) %>%
+  summarize(
+    median_pressure = median(PRES_ADJUSTED, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+df_median_carbon_line <- df_carbon_clean %>%
+  filter(!is.na(region), !is.na(month)) %>%
+  group_by(region, month) %>%
+  summarize(
+    median_pressure = median(PRES_ADJUSTED, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+
+# Print the summary table
+print(df_depth_summary)
+print(df_carbon_depth_summary)
+
+# 2. Plot a boxplot of subduction depth by region and month
+plot_subduction_depth <- ggplot(df_complete_clean %>% 
+                                  filter(!is.na(region), !is.na(month)),
+                                aes(x = month, 
+                                    y = PRES_ADJUSTED, 
+                                    fill = region)) +
+  geom_boxplot() + # Median line (and optional points) for each region facet
+  geom_line(
+    data = df_median_line,
+    aes(
+      x = month, 
+      y = median_pressure, 
+      group = region
+    ),
+    color = "black", 
+    size = 1
+  ) +
+  geom_point(
+    data = df_median_line,
+    aes(
+      x = month, 
+      y = median_pressure
+    ),
+    color = "black", 
+    size = 2
+  )+
+  facet_wrap(~ region, ncol = 2,axes="all") +
+  scale_fill_viridis_d() +
+  labs(
+    title = "Monthly Distribution of Subduction Depth by Region",
+    x = "Month",
+    y = "Pressure (dbar)",
+    fill = "Region"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text     = element_text(size = 15, face = "bold"),
+    axis.text.x    = element_text(size = 15, angle = 45, hjust = 1),
+    axis.text.y    = element_text(size = 15),
+    axis.title.y   = element_text(size = 16),
+    title          = element_text(size = 15)
+  ) +
+  guides(fill = "none")+scale_y_reverse()
+
+plot_carbon_subduction_depth <- ggplot(df_carbon_clean %>% 
+                                  filter(!is.na(region), !is.na(month)),
+                                aes(x = month, 
+                                    y = PRES_ADJUSTED, 
+                                    fill = region)) +
+  geom_boxplot() +# Median line (and optional points) for each region facet
+  geom_line(
+    data = df_median_carbon_line,
+    aes(
+      x = month, 
+      y = median_pressure, 
+      group = region
+    ),
+    color = "black", 
+    size = 1
+  ) +
+  geom_point(
+    data = df_median_carbon_line,
+    aes(
+      x = month, 
+      y = median_pressure
+    ),
+    color = "black", 
+    size = 2
+  )+
+  facet_wrap(~ region, ncol = 2,axes="all") +
+  scale_fill_viridis_d() +
+  labs(
+    title = "Monthly Distribution of Carbon Subduction Depth by Region",
+    x = "Month",
+    y = "Pressure (dbar)",
+    fill = "Region"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text     = element_text(size = 15, face = "bold"),
+    axis.text.x    = element_text(size = 15, angle = 45, hjust = 1),
+    axis.text.y    = element_text(size = 15),
+    axis.title.y   = element_text(size = 16),
+    title          = element_text(size = 15)
+  ) +
+  guides(fill = "none")+scale_y_reverse()
+
+
+
+# Display the plot
+print(plot_subduction_depth)
+plot_carbon_subduction_depth
+
+
+df_carbon_clean$PRES_ADJUSTED
+
+
+#  save the figure
+ggsave("figures/seasonal_subduction_depth_by_region.png",
+       plot   = plot_subduction_depth,
+       width  = 10,
+       height = 8)
+
+ggsave("figures/seasonal_carbon_subduction_depth_by_region.png",
+       plot   = plot_carbon_subduction_depth,
+       width  = 10,
+       height = 8)
+
+
+# 3. Statistical test for monthly differences in subduction depth
+#    Here we use a Kruskal-Wallis test for each region to see if 
+#    the distribution of PRES_ADJUSTED differs by month
+seasonality_test_depth <- df_complete_clean %>%
+  filter(!is.na(region), !is.na(month)) %>%
+  group_by(region) %>%
+  do({
+    kruskal_result <- kruskal.test(PRES_ADJUSTED ~ month, data = .)
+    data.frame(
+      kruskal_stat = kruskal_result$statistic,
+      df           = kruskal_result$parameter,
+      p_value      = kruskal_result$p.value
+    )
+  }) %>%
+  ungroup()
+
+seasonality_carbon_test_depth <- df_carbon_clean %>%
+  filter(!is.na(region), !is.na(month)) %>%
+  group_by(region) %>%
+  do({
+    kruskal_result <- kruskal.test(PRES_ADJUSTED ~ month, data = .)
+    data.frame(
+      kruskal_stat = kruskal_result$statistic,
+      df           = kruskal_result$parameter,
+      p_value      = kruskal_result$p.value
+    )
+  }) %>%
+  ungroup()
+
+
+# Print the test results
+print("Seasonality Test for Subduction Depth (Kruskal-Wallis):")
+print(seasonality_test_depth)
+print(seasonality_carbon_test_depth)
+
+
+# Southern Ocean, seasonality, for southern tropics as well. 
+
+##############################################################################
+# 3) Fit the Exponential and Gamma distributions with fitdistrplus
+##############################################################################
+
+pres_data <- df_complete_clean %>% filter(!is.na(region), !is.na(month))
+pres_data$PRES_ADJUSTED <- pres_data$PRES_ADJUSTED-200
+
+
+carbon_pres_data <- df_carbon_clean %>% filter(!is.na(region), !is.na(month))
+carbon_pres_data$PRES_ADJUSTED <- carbon_pres_data$PRES_ADJUSTED-200
+
+##############################################################################
+# 3) Define a helper function to fit Exp, Gamma, and Power Law, and 
+#    return a data frame of x vs. PDF for each distribution.
+##############################################################################
+
+get_fitted_pdf_data <- function(sub_df, n_points = 500) {
+  # sub_df is the subset for one region
+  
+  # 3a) Extract the numeric vector
+  x_vals <- sub_df$PRES_ADJUSTED
+  
+  # 3b) Fit Exponential and Gamma via fitdistrplus
+  fit_exp   <- fitdist(x_vals, "exp")
+  fit_gamma <- fitdist(x_vals, "gamma")
+  
+  # 3c) Fit Power Law using poweRlaw
+  #     NOTE: For a strict power-law fit, data must be positive and typically >= 1
+  #     If your data are smaller, consider shifting or ensuring no non-positive values.
+  pl_model <- displ$new(x_vals)
+  est_xmin <- estimate_xmin(pl_model)
+  pl_model$setXmin(est_xmin)
+  est_params <- estimate_pars(pl_model)
+  pl_model$setPars(est_params)
+  
+  alpha_hat <- pl_model$getPars()
+  xmin_hat  <- pl_model$getXmin()
+  
+  # 3d) Define a function for the Power-law PDF
+  powerlaw_pdf <- function(x, alpha, xmin) {
+    # PDF is alpha * xmin^alpha * x^(-alpha - 1) for x >= xmin
+    # zero otherwise
+    ifelse(
+      x < xmin, 
+      0, 
+      alpha * xmin^alpha * x^(-alpha - 1)
+    )
+  }
+  
+  # 3e) Create a sequence of x-values spanning the data range
+  x_seq <- seq(
+    from = max(0, min(x_vals)),  # assume 0 as lower bound if needed
+    to   = max(x_vals),
+    length.out = n_points
+  )
+  
+  # 3f) Compute PDFs from each fitted model
+  exp_density   <- dexp(x_seq, rate  = fit_exp$estimate["rate"])
+  gamma_density <- dgamma(
+    x_seq, 
+    shape = fit_gamma$estimate["shape"], 
+    rate  = fit_gamma$estimate["rate"]
+  )
+  pl_density    <- powerlaw_pdf(x_seq+200, alpha_hat, xmin_hat)
+  
+  # 3g) Return long-format data frame of x, distribution, density
+  out_df <- data.frame(
+    x = x_seq,
+    Exp   = exp_density,
+    Gamma = gamma_density,
+    PL    = pl_density
+  ) %>%
+    pivot_longer(
+      cols = c("Exp","Gamma","PL"),
+      names_to = "Distribution",
+      values_to = "Density"
+    )
+  
+  # Optionally, store fit parameters as attributes or columns
+  # We'll store alpha, xmin in each row if you want to reference them
+  out_df$alpha_hat <- alpha_hat
+  out_df$xmin_hat  <- xmin_hat
+  
+  return(out_df)
+}
+
+##############################################################################
+# 4) Apply the fitting function by region, producing a data frame 
+#    that contains x, Distribution, Density, region, etc.
+##############################################################################
+fitted_df <- pres_data %>%
+  group_by(region) %>%
+  do( get_fitted_pdf_data(.) )  # for each region, produce the PDF data
+
+# Make sure to keep region as a column (rather than a grouping var):
+fitted_df <- ungroup(fitted_df)
+
+##############################################################################
+# 5) Plot faceted by region: histogram (or density) + fitted curves
+##############################################################################
+# We'll illustrate with a histogram, scaled to density on the y-axis.
+# If you prefer a kernel density plot for the raw data, replace geom_histogram 
+# with geom_density, but note that `bins = 30` applies to histograms, not densities.
+
+distrib_subduction <- ggplot() +
+  # 5a) histogram of the original data, faceted by region
+  geom_histogram(
+    data = pres_data,
+    aes(x = PRES_ADJUSTED, y = ..density.. , fill = region),
+    bins  = 30,
+    color = "black",
+    fill = "white",
+    alpha = 0.8
+  ) +geom_density(
+    data = pres_data,
+    aes(x = PRES_ADJUSTED,fill=region),
+    bins  = 30,
+    color = "black",
+    alpha = 0.8
+  )+
+  # 5b) overlaid lines from the fitted distributions
+  geom_line(
+    data = fitted_df,
+    aes(x = x, y = Density, color = Distribution),
+    size = 1
+  ) +
+  # 5c) facet by region
+  facet_wrap(~ region, scales = "free_y") +
+  
+  # 5d) color scale and labeling
+  scale_color_manual(values = c("Exp"="red", "Gamma"="blue", "PL"="green")) +
+  labs(
+    title = "Fitted Distributions by Region",
+    x     = "Pressure Adjusted",
+    y     = "Density"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank()) +
+  # 5e) Example of customizing x-axis ticks:
+  scale_x_continuous(
+    breaks = seq(0, 800, by = 200),
+    labels = seq(200,1000,by=200)
+  )
+
+
+fitted_df <- carbon_pres_data %>%
+  group_by(region) %>%
+  do( get_fitted_pdf_data(.) )  # for each region, produce the PDF data
+
+# Make sure to keep region as a column (rather than a grouping var):
+fitted_df <- ungroup(fitted_df)
+
+##############################################################################
+# 6) Plot faceted by region: histogram (or density) + fitted curves
+##############################################################################
+# We'll illustrate with a histogram, scaled to density on the y-axis.
+# If you prefer a kernel density plot for the raw data, replace geom_histogram 
+# with geom_density, but note that `bins = 30` applies to histograms, not densities.
+
+distrib_carbon_subduction <- ggplot() +
+  # 5a) histogram of the original data, faceted by region
+  geom_histogram(
+    data = carbon_pres_data,
+    aes(x = PRES_ADJUSTED, y = ..density.. , fill = region),
+    bins  = 30,
+    color = "black",
+    fill = "white",
+    alpha = 0.8
+  ) +geom_density(
+    data = carbon_pres_data,
+    aes(x = PRES_ADJUSTED,fill=region),
+    bins  = 30,
+    color = "black",
+    alpha = 0.8
+  )+
+  # 5b) overlaid lines from the fitted distributions
+  geom_line(
+    data = fitted_df,
+    aes(x = x, y = Density, color = Distribution),
+    size = 1
+  ) +
+  # 5c) facet by region
+  facet_wrap(~ region, scales = "free_y") +
+  
+  # 5d) color scale and labeling
+  scale_color_manual(values = c("Exp"="red", "Gamma"="blue", "PL"="green")) +
+  labs(
+    title = " Distributions of Depth of Carbon Subduction by Region",
+    x     = "Pressure Adjusted",
+    y     = "Density"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_blank()) +
+  # 5e) Example of customizing x-axis ticks:
+  scale_x_continuous(
+    breaks = seq(0, 800, by = 200),
+    labels = seq(200,1000,by=200)
+  )
+
+
+
+#  save the figure
+ggsave("figures/seasonal_subduction_depth_distribution.png",
+       plot   = distrib_subduction,
+       width  = 10,
+       height = 8)
+
+ggsave("figures/seasonal_carbon_subduction_depth_distribution.png",
+       plot   = distrib_carbon_subduction,
+       width  = 10,
+       height = 8)
+
+
+
+
 
 
 
