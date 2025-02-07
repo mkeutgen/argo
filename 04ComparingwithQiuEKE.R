@@ -24,6 +24,8 @@ library(patchwork)
 library(fitdistrplus)
 library(poweRlaw)
 library(ggplot2)
+library(tidync)
+
 # Resolve function conflicts in favor of dplyr
 conflict_prefer("select", "dplyr")
 conflict_prefer("filter", "dplyr")
@@ -32,6 +34,9 @@ conflict_prefer("filter", "dplyr")
 Sys.setlocale(category = "LC_ALL", locale = "en_US.UTF-8")
 setwd("/data/GLOBARGO/src/")
 df_argo_clean <- read_csv("data/df_argo_loc.csv")
+df_argo_clean$TIME %>% min(na.rm = T) # "2010-05-30"
+df_argo_clean$TIME %>% max(na.rm = T) # "2024-05-02"
+
 df_complete_clean <- read_csv("data/df_eddy_subduction_anom.csv")
 df_carbon_clean <- read_csv("data/df_carbon_subduction_anom.csv")
 df_eke <- read_table("data/Qiu2018_data_fig5.asc")
@@ -248,7 +253,7 @@ format_eke_labels <- function(bins) {
   return(labels)
 }
 
-
+pred_grid <- pred_grid %>% na.omit() 
 
 # Plot with improved aesthetics
 map_eke_bl <- ggplot(pred_grid, aes(x = LON_num, y = LAT_num, fill = EKE_bl_hat_binned)) +
@@ -259,7 +264,7 @@ map_eke_bl <- ggplot(pred_grid, aes(x = LON_num, y = LAT_num, fill = EKE_bl_hat_
   scale_fill_viridis_d(
     option = "viridis",  
     name = "EKE (m²/s²)", # Updated legend title
-    guide = guide_legend(reverse = TRUE)  # Reverse legend order
+    guide = guide_legend(reverse = TRUE,na.translate = FALSE)  # Reverse legend order
   ) + 
   geom_rect(
     aes(xmin = -180, xmax = 180, ymin = 53, ymax = 90),
@@ -270,15 +275,6 @@ map_eke_bl <- ggplot(pred_grid, aes(x = LON_num, y = LAT_num, fill = EKE_bl_hat_
     aes(xmin = -180, xmax = 180, ymin = -90, ymax = -67),
     fill = "lightblue",
     inherit.aes = FALSE
-  ) +
-  # Contour lines for additional information
-  geom_contour(
-    data = pred_grid,
-    aes(x = LON_num, y = LAT_num, z = EKE_bl_hat_gaussian_log),
-    color = "white", 
-    alpha = 0.5,       # More subtle contrast
-    bins = 10,
-    linewidth = 0.5    # Thin contour lines for better readability
   ) +
   # Add the world map
   geom_sf(data = world, fill = "white", color = "white", inherit.aes = FALSE) +
@@ -292,7 +288,6 @@ map_eke_bl <- ggplot(pred_grid, aes(x = LON_num, y = LAT_num, fill = EKE_bl_hat_
   # Labels and theme improvements
   labs(
     title = "Balanced Eddy Kinetic Energy",
-    subtitle = "Gaussian Log Model",
     x = "Longitude",
     y = "Latitude"
   ) +
@@ -317,7 +312,7 @@ map_eke_unbl <- ggplot(pred_grid, aes(x = LON_num, y = LAT_num, fill = EKE_unbl_
   scale_fill_viridis_d(
     option = "viridis",  
     name = "EKE (m²/s²)", # Updated legend title
-    guide = guide_legend(reverse = TRUE)  # Reverse legend order
+    guide = guide_legend(reverse = TRUE,na.translate = FALSE)  # Reverse legend order
   ) + 
   geom_rect(
     aes(xmin = -180, xmax = 180, ymin = 53, ymax = 90),
@@ -330,14 +325,14 @@ map_eke_unbl <- ggplot(pred_grid, aes(x = LON_num, y = LAT_num, fill = EKE_unbl_
     inherit.aes = FALSE
   ) +
   # Contour lines for additional information
-  geom_contour(
-    data = pred_grid,
-    aes(x = LON_num, y = LAT_num, z = EKE_unbl_hat_gaussian_log),
-    color = "white", 
-    alpha = 0.5,       # More subtle contrast
-    bins = 10,
-    linewidth = 0.5    # Thin contour lines for better readability
-  ) +
+  #geom_contour(
+  #  data = pred_grid,
+  #  aes(x = LON_num, y = LAT_num, z = EKE_unbl_hat_gaussian_log),
+  #  color = "white", 
+  #  alpha = 0.5,       # More subtle contrast
+  #  bins = 10,
+  #  linewidth = 0.5    # Thin contour lines for better readability
+  #) +
   # Add the world map
   geom_sf(data = world, fill = "white", color = "white", inherit.aes = FALSE) +
   # Coordinate system (keep only coord_sf)
@@ -349,8 +344,7 @@ map_eke_unbl <- ggplot(pred_grid, aes(x = LON_num, y = LAT_num, fill = EKE_unbl_
   
   # Labels and theme improvements
   labs(
-    title = "Balanced Eddy Kinetic Energy",
-    subtitle = "Gaussian Log Model",
+    title = "Unbalanced Eddy Kinetic Energy",
     x = "Longitude",
     y = "Latitude"
   ) +
@@ -366,7 +360,142 @@ map_eke_unbl <- ggplot(pred_grid, aes(x = LON_num, y = LAT_num, fill = EKE_unbl_
 ggsave(plot=map_eke_bl,filename = "figures/smoothed_map_eke_bl.png",width = 10,height = 10)
 ggsave(plot=map_eke_unbl,filename = "figures/smoothed_map_eke_unbl.png",width = 10,height = 10)
 
-(eke_balanced_map + map_subd_full) / (eke_unbalanced_map + map_subd_full)
+combined_discrete_eke_map <- (eke_balanced_map + map_subd_full) / (eke_unbalanced_map + map_subd_full)
 
 
-(map_eke_bl + map_subd_full) / (map_eke_unbl + map_subd_full)
+combined_smoothed_eke_map <- (map_eke_bl + map_subd_full) / (map_eke_unbl + map_subd_full)
+
+ggsave("figures/combined_discrete_eke_map.png", combined_discrete_eke_map, width = 14, height = 10, dpi = 300)
+
+ggsave("figures/combined_smoothed_eke_map.png", combined_smoothed_eke_map, width = 14, height = 10, dpi = 300)
+
+###############
+## CHLOROPHYLL DATA from https://www.oceancolour.org/browser/
+# Or from https://data.jrc.ec.europa.eu/dataset/d6f9abd9-777c-4a0c-a5f7-669612f83307#dataaccess
+################
+library(ncdf4)
+
+chloro_data <- tidync("/data/GLOBARGO/data/chlor_a_mean_climatology_2010_2024_9km.nc")
+chloro_data
+
+df_chloro <- chloro_data %>% 
+  hyper_tibble() %>%
+  rename(LAT = lat, LON = lon, MONTH = month, CHLA = chlor_a_mean) %>% 
+  mutate(LAT = as.numeric(LAT),
+         LON = as.numeric(LON))
+
+df_chloro_jan <- df_chloro %>% filter(MONTH == 1)
+
+df_chloro_jan %>% str()
+
+ggplot(df_chloro_jan, aes(x = LON, y = LAT, fill = log(CHLA))) +
+  
+  # Tile plot with discrete color bins
+  geom_tile(alpha = 0.95) + scale_fill_viridis()+ # Slight transparency for better visibility
+  # Add the world map
+  geom_sf(data = world, fill = "darkgrey", color = "white", inherit.aes = FALSE) +
+  # Coordinate system (keep only coord_sf)
+  coord_sf(
+    xlim = c(-180, 180),
+    ylim = c(-90, 90),
+    expand = FALSE
+  ) +
+  
+  # Labels and theme improvements
+  labs(
+    title = "Chlorophyll Alpha",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  
+  theme_minimal(base_size = 14) +  # Increased text size for readability
+  theme(
+    legend.position = "right",  # Place legend on the right
+    legend.title = element_text(size = 12, face = "bold"),  # Improve legend title
+    legend.text = element_text(size = 10),  # Improve legend labels
+    panel.grid = element_blank()  # Remove background grid for cleaner visuals
+  )
+
+# Alternative EU dataset
+chloro_data_jan <- tidync("/data/GLOBARGO/data/chlorophyll_monthly_seawifs/GMIS_V_CHLA_01.nc")
+chloro_data_jan
+
+df_chloro_jan <- chloro_data_jan %>% 
+  hyper_tibble() %>%
+  rename(LAT = lat, LON = lon, CHLA = Chl_a) %>% 
+  mutate(LAT = as.numeric(LAT),
+         LON = as.numeric(LON))
+
+df_chloro_jan$chla_exp <- 10^(df_chloro_jan$CHLA)
+
+df_chloro_jan$chla_exp %>% summary()
+ggplot(df_chloro_jan, aes(x = LON, y = LAT, fill = chla_exp)) +
+  
+  # Tile plot with discrete color bins
+  geom_tile(alpha = 0.95) + scale_fill_viridis(limits = c(0, 1))+ # Slight transparency for better visibility
+  # Add the world map
+  geom_sf(data = world, fill = "darkgrey", color = "white", inherit.aes = FALSE) +
+  # Coordinate system (keep only coord_sf)
+  coord_sf(
+    xlim = c(-180, 180),
+    ylim = c(-90, 90),
+    expand = FALSE
+  ) +
+  
+  # Labels and theme improvements
+  labs(
+    title = "Chlorophyll Alpha",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  
+  theme_minimal(base_size = 14) +  # Increased text size for readability
+  theme(
+    legend.position = "right",  # Place legend on the right
+    legend.title = element_text(size = 12, face = "bold"),  # Improve legend title
+    legend.text = element_text(size = 10),  # Improve legend labels
+    panel.grid = element_blank()  # Remove background grid for cleaner visuals
+  )
+View(df_chlor)
+
+chloro_data_jul <- tidync("/data/GLOBARGO/data/chlorophyll_monthly_seawifs/GMIS_V_CHLA_07.nc")
+chloro_data_jul
+
+df_chloro_jul <- chloro_data_jul %>% 
+  hyper_tibble() %>%
+  rename(LAT = lat, LON = lon, CHLA = Chl_a) %>% 
+  mutate(LAT = as.numeric(LAT),
+         LON = as.numeric(LON))
+
+df_chloro_jul$chla_exp <- 10^(df_chloro_jul$CHLA)
+
+df_chloro_jul$chla_exp %>% summary()
+p <- ggplot(df_chloro_jul, aes(x = LON, y = LAT, fill = chla_exp)) +
+  
+  # Tile plot with discrete color bins
+  geom_tile(alpha = 0.95) + scale_fill_viridis(limits = c(0, 1))+ # Slight transparency for better visibility
+  # Add the world map
+  geom_sf(data = world, fill = "darkgrey", color = "white", inherit.aes = FALSE) +
+  # Coordinate system (keep only coord_sf)
+  coord_sf(
+    xlim = c(-180, 180),
+    ylim = c(-90, 90),
+    expand = FALSE
+  ) +
+  
+  # Labels and theme improvements
+  labs(
+    title = "Climatology of Chlorophyll Alpha (July)",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  
+  theme_minimal(base_size = 14) +  # Increased text size for readability
+  theme(
+    legend.position = "right",  # Place legend on the right
+    legend.title = element_text(size = 12, face = "bold"),  # Improve legend title
+    legend.text = element_text(size = 10),  # Improve legend labels
+    panel.grid = element_blank()  # Remove background grid for cleaner visuals
+  )
+
+ggsave(plot = p,"figures/chlorophyll_seawifs_chla_july.png")
