@@ -384,37 +384,156 @@ df_chloro <- chloro_data %>%
   mutate(LAT = as.numeric(LAT),
          LON = as.numeric(LON))
 
-df_chloro_jan <- df_chloro %>% filter(MONTH == 1)
 
-df_chloro_jan %>% str()
+# ----- Prepare Seasonal Chlorophyll Data -----
+df_chloro_djf <- df_chloro %>% 
+  filter(MONTH %in% c(12, 1, 2)) %>% 
+  group_by(LAT, LON) %>% 
+  summarise(CHLA = mean(CHLA), .groups = "drop")
 
-ggplot(df_chloro_jan, aes(x = LON, y = LAT, fill = log(CHLA))) +
+df_chloro_mam <- df_chloro %>% 
+  filter(MONTH %in% c(3, 4, 5)) %>% 
+  group_by(LAT, LON) %>% 
+  summarise(CHLA = mean(CHLA), .groups = "drop")
+
+df_chloro_jja <- df_chloro %>% 
+  filter(MONTH %in% c(6, 7, 8)) %>% 
+  group_by(LAT, LON) %>% 
+  summarise(CHLA = mean(CHLA), .groups = "drop")
+
+df_chloro_son <- df_chloro %>% 
+  filter(MONTH %in% c(9, 10, 11)) %>% 
+  group_by(LAT, LON) %>% 
+  summarise(CHLA = mean(CHLA), .groups = "drop")
+
+
+# ----- Set Parameters for Stippling -----
+stipple_resolution <- 5  # degrees
+# Define global scales (compute these once, based on your full dataset)
+global_chla_limits <- c(0.01, 85)  # Adjust as needed
+global_contour_breaks <- seq(0, 0.25, by = 0.05)  # Underlying proportion values
+global_contour_labels <- as.character(round(global_contour_breaks * 100, 0))
+
+plot_season <- function(df_chloro_season, pred_carb, argo_months, season_label) {
   
-  # Tile plot with discrete color bins
-  geom_tile(alpha = 0.95) + scale_fill_viridis()+ # Slight transparency for better visibility
-  # Add the world map
-  geom_sf(data = world, fill = "darkgrey", color = "white", inherit.aes = FALSE) +
-  # Coordinate system (keep only coord_sf)
-  coord_sf(
-    xlim = c(-180, 180),
-    ylim = c(-90, 90),
-    expand = FALSE
-  ) +
+  # 1. Aggregate Argo float locations to 5° bins for the season
+  argo_bins <- df_argo_clean %>%
+    filter(month(TIME) %in% argo_months) %>%
+    mutate(
+      lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+      lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+    ) %>%
+    group_by(lon_bin_stipple, lat_bin_stipple) %>%
+    summarize(count = n(), .groups = "drop")
   
-  # Labels and theme improvements
-  labs(
-    title = "Chlorophyll Alpha",
-    x = "Longitude",
-    y = "Latitude"
-  ) +
+  # 2. Identify undersampled areas (e.g., fewer than 5 profiles)
+  undersampled <- argo_bins %>% filter(count < 5)
   
-  theme_minimal(base_size = 14) +  # Increased text size for readability
-  theme(
-    legend.position = "right",  # Place legend on the right
-    legend.title = element_text(size = 12, face = "bold"),  # Improve legend title
-    legend.text = element_text(size = 10),  # Improve legend labels
-    panel.grid = element_blank()  # Remove background grid for cleaner visuals
-  )
+  # 3. Generate corner points for each undersampled cell (4 corners per cell)
+  undersampled_corners <- undersampled %>%
+    rowwise() %>%
+    mutate(corners = list(
+      data.frame(
+        LON = c(lon_bin_stipple,
+                lon_bin_stipple + stipple_resolution,
+                lon_bin_stipple,
+                lon_bin_stipple + stipple_resolution),
+        LAT = c(lat_bin_stipple,
+                lat_bin_stipple,
+                lat_bin_stipple + stipple_resolution,
+                lat_bin_stipple + stipple_resolution)
+      )
+    )) %>%
+    ungroup() %>%
+    unnest(corners)
+  
+  # 4. Prepare the prediction grid for the season
+  prediction_grid_season <- pred_carb %>%
+    mutate(
+      lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
+      lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
+    ) %>%
+    left_join(undersampled, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
+    mutate(undersampled = ifelse(is.na(count), FALSE, TRUE))
+  
+  # 5. Build the ggplot for this season
+  p <- ggplot() +
+    # Main tile layer for chlorophyll data
+    geom_tile(data = df_chloro_season,
+              aes(x = LON, y = LAT, fill = CHLA),
+              alpha = 0.95) +
+    scale_fill_viridis(
+      trans = "log",
+      limits = global_chla_limits,
+      name = expression("Chlorophyll " * alpha ~ " (g/m"^3*")"),
+      breaks = c(0.01, 0.1, 1, 10),
+      labels = comma_format()
+    ) +
+    
+    # New color scale for the contour layer
+    new_scale_color() +
+    geom_contour(data = prediction_grid_season,
+                 aes(x = lon_bin, y = lat_bin, z = proportion,
+                     color = factor(round(after_stat(level) * 100, 0))),
+                 breaks = global_contour_breaks,
+                 alpha = 1,
+                 inherit.aes = FALSE,
+                 show.legend = TRUE) +
+    scale_color_viridis_d(
+      name = "Probability of carbon subduction (%)",
+      limits = global_contour_labels,
+      breaks = global_contour_labels,
+      labels = function(x) paste0(x, "%")
+    ) +
+    
+    # Add stippling: plot four corner points per undersampled grid cell
+    geom_point(data = undersampled_corners,
+               aes(x = LON, y = LAT),
+               color = "black", alpha = 0.6, size = 1.5, shape = 20) +
+    
+    # Add world map layer
+    geom_sf(data = world,
+            fill = "lightgrey", color = "lightgrey",
+            inherit.aes = FALSE) +
+    
+    # Set coordinate system
+    coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
+    
+    # Labels and theme
+    labs(
+      title = paste("(", season_label, ")", sep = ""),
+      x = "Longitude",
+      y = "Latitude"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(
+      legend.position = "right",
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 10),
+      legend.key.size = unit(0.8, "cm"),
+      panel.grid = element_blank()
+    )
+  
+  return(p)
+}
+
+plot_djf <- plot_season(df_chloro_djf, pred_djf_carb, c(12, 1, 2), "DJF")
+plot_mam <- plot_season(df_chloro_mam, pred_mam_carb, c(3, 4, 5), "MAM")
+plot_jja <- plot_season(df_chloro_jja, pred_jja_carb, c(6, 7, 8), "JJA")
+plot_son <- plot_season(df_chloro_son, pred_son_carb, c(9, 10, 11), "SON")
+
+# ----- Save Individual Seasonal Plots -----
+ggsave("AQUA_Chloro_DJF.png", plot = plot_djf, width = 12, height = 10, dpi = 300)
+ggsave("AQUA_Chloro_MAM.png", plot = plot_mam, width = 12, height = 10, dpi = 300)
+ggsave("AQUA_Chloro_JJA.png", plot = plot_jja, width = 12, height = 10, dpi = 300)
+ggsave("AQUA_Chloro_SON.png", plot = plot_son, width = 12, height = 10, dpi = 300)
+
+# ----- Create and Save Combined Plot with Collected Legends -----
+g <- ggarrange(plot_djf,plot_mam,plot_jja,plot_son,
+               nrow = 2,ncol= 2, common.legend = T, legend = "bottom")
+
+ggsave("AQUA_Chloro_Combined_Seasons.png", plot = g, width = 12, height = 10, dpi = 300)
+
 
 # Alternative EU dataset
 chloro_data_jan <- tidync("/data/GLOBARGO/data/chlorophyll_monthly_seawifs/GMIS_V_CHLA_01.nc")
@@ -498,4 +617,4 @@ p <- ggplot(df_chloro_jul, aes(x = LON, y = LAT, fill = chla_exp)) +
     panel.grid = element_blank()  # Remove background grid for cleaner visuals
   )
 
-ggsave(plot = p,"figures/chlorophyll_seawifs_chla_july.png")
+ggplot(p,"figures/chlorophyll_seawifs_chla_july.png")

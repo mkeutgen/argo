@@ -426,14 +426,20 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
     geom_contour(data = pred_grid,
                  aes(x = lon_bin, y = lat_bin, z = proportion),
                  color = "white", alpha = 0.3) +
-    geom_sf(data = world_data, fill = "gray80", color = "gray40", inherit.aes = FALSE) +
+    geom_sf(data = world_data, fill = "white", color = "white", inherit.aes = FALSE) +
     coord_sf(xlim = x_limits, ylim = y_limits, expand = FALSE, crs = st_crs(4326)) +
     labs(
       title = paste0("Estimated ", event_label, " Probability (", season_label, ")"),
       x = "Longitude", y = "Latitude"
     ) +
     common_scale +    # apply the discrete color scale
-    theme_minimal()
+    theme_minimal(base_size = 14) +  # Increased text size for readability
+    theme(
+      legend.position = "right",  # Place legend on the right
+      legend.title = element_text(size = 12, face = "bold"),  # Improve legend title
+      legend.text = element_text(size = 10),  # Improve legend labels
+      panel.grid = element_blank()  # Remove background grid for cleaner visuals
+    )
 }
 
 ###############################################################################
@@ -451,6 +457,8 @@ gam_son_subd <- fit_gam_season(merged_counts_son,  k_value = 600)
 
 # Predict
 pred_full_subd <- predict_gam(gam_full_subd, merged_counts_full, step = 1)
+
+
 pred_djf_subd <- predict_gam(gam_djf_subd, merged_counts_djf, step = 1)
 pred_mam_subd <- predict_gam(gam_mam_subd, merged_counts_mam, step = 1)
 pred_jja_subd <- predict_gam(gam_jja_subd, merged_counts_jja, step = 1)
