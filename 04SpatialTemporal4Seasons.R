@@ -355,12 +355,12 @@ ggsave(filename = "figures/TimeSpaceVar/4SEASONS/combined_proportion_maps_carbon
 #  - count_anomaly
 # and fits a GAM:   cbind(anomaly, total - anomaly) ~ s(lat, lon).
 #
-# We specify k=300 or some other suitable value. Feel free to adjust.
-
-fit_gam_season <- function(merged_counts, k_value = 300) {
+# We specify k=600 or some other suitable value. Feel free to adjust.
+# We specify minimum Argo bin in the 5*5 gridcell to learn : 5
+fit_gam_season <- function(merged_counts, k_value = 600,argo_min = 5) {
   # Filter out any invalid rows if necessary
   df <- merged_counts %>%
-    filter(!is.na(lon_bin), !is.na(lat_bin), count_total > 0)
+    filter(!is.na(lon_bin), !is.na(lat_bin), count_total > argo_min)
   
   gam_model <- gam(
     cbind(count_anomaly, count_total - count_anomaly) ~
@@ -415,8 +415,41 @@ make_discrete_scale <- function(prob_min, prob_max, binwidth = 0.1) {
     oob = scales::squish
   )
 }
+stipple_resolution <- 5  # degrees
 
-plot_gam_map <- function(pred_grid, world_data, season_label, event_label, common_scale) {
+plot_gam_map <- function(pred_grid, world_data, season_label, event_label, common_scale,argo_months) {
+  # 1. Aggregate Argo float locations to 5° bins for the season
+  argo_bins <- df_argo_clean %>%
+    filter(month(TIME) %in% argo_months) %>%
+    mutate(
+      lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+      lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+    ) %>%
+    group_by(lon_bin_stipple, lat_bin_stipple) %>%
+    summarize(count = n(), .groups = "drop")
+  
+  # 2. Identify undersampled areas (e.g., fewer than 5 profiles)
+  undersampled <- argo_bins %>% filter(count < 5)
+  
+  # 3. Generate corner points for each undersampled cell (4 corners per cell)
+  undersampled_corners <- undersampled %>%
+    rowwise() %>%
+    mutate(corners = list(
+      data.frame(
+        LON = c(lon_bin_stipple,
+                lon_bin_stipple + stipple_resolution,
+                lon_bin_stipple,
+                lon_bin_stipple + stipple_resolution),
+        LAT = c(lat_bin_stipple,
+                lat_bin_stipple,
+                lat_bin_stipple + stipple_resolution,
+                lat_bin_stipple + stipple_resolution)
+      )
+    )) %>%
+    ungroup() %>%
+    unnest(corners)
+  
+  
   x_limits <- range(pred_grid$lon_bin, na.rm = TRUE)
   y_limits <- range(pred_grid$lat_bin, na.rm = TRUE)
   
@@ -425,21 +458,34 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
               aes(x = lon_bin, y = lat_bin, fill = proportion)) +
     geom_contour(data = pred_grid,
                  aes(x = lon_bin, y = lat_bin, z = proportion),
-                 color = "white", alpha = 0.3) +
+                 color = "white", alpha = 0.3,breaks = common_scale$breaks) +
+    # Add stippling: plot four corner points per undersampled grid cell
+    geom_point(data = undersampled_corners,
+               aes(x = LON, y = LAT),
+               color = "white", alpha = 1, size = 0.5, shape = 20) +
+    # Add continents
     geom_sf(data = world_data, fill = "white", color = "white", inherit.aes = FALSE) +
-    coord_sf(xlim = x_limits, ylim = y_limits, expand = FALSE, crs = st_crs(4326)) +
+    coord_sf(xlim = c(-180,180), ylim = c(-90,90), expand = FALSE, crs = st_crs(4326)) +
     labs(
       title = paste0("Estimated ", event_label, " Probability (", season_label, ")"),
       x = "Longitude", y = "Latitude"
     ) +
     common_scale +    # apply the discrete color scale
     theme_minimal(base_size = 14) +  # Increased text size for readability
-    theme(
-      legend.position = "right",  # Place legend on the right
-      legend.title = element_text(size = 12, face = "bold"),  # Improve legend title
-      legend.text = element_text(size = 10),  # Improve legend labels
-      panel.grid = element_blank()  # Remove background grid for cleaner visuals
-    )
+    theme(legend.position = 'top', 
+              legend.title = element_text(size = 12, face = "bold", margin = margin(r = 20)),  # Improve legend title
+              panel.grid = element_blank(),
+              legend.text = element_text(size = 10),  # Improve legend labels
+              legend.direction = "horizontal", 
+              legend.box = "horizontal",
+              legend.key.height = unit(1,"lines"),
+              legend.key.width = unit(6,"lines"))+ 
+   guides(color = guide_legend(title.position = "top", 
+                                    # hjust = 0.5 centres the title horizontally
+                                    title.hjust = 0.5,
+                                    label.position = "bottom")) 
+      
+    
 }
 
 ###############################################################################
@@ -479,28 +525,28 @@ subd_scale <- make_discrete_scale(subd_min, subd_max, binwidth = 0.05)
 
 # Plot each season with the common discrete scale
 
-map_subd_full <- plot_gam_map(pred_full_subd, world, "Whole Year", "Subduction", subd_full_scale)
+map_subd_full <- plot_gam_map(pred_full_subd, world, "Whole Year", "Subduction", subd_full_scale,argo_months = c(1:12))
 
-map_subd_djf <- plot_gam_map(pred_djf_subd, world, "DJF", "Subduction", subd_scale)
-map_subd_mam <- plot_gam_map(pred_mam_subd, world, "MAM", "Subduction", subd_scale)
-map_subd_jja <- plot_gam_map(pred_jja_subd, world, "JJA", "Subduction", subd_scale)
-map_subd_son <- plot_gam_map(pred_son_subd, world, "SON", "Subduction", subd_scale)
+map_subd_djf <- plot_gam_map(pred_djf_subd, world, "DJF", "Subduction", subd_scale,c(12,1,2))
+map_subd_mam <- plot_gam_map(pred_mam_subd, world, "MAM", "Subduction", subd_scale,c(3:5))
+map_subd_jja <- plot_gam_map(pred_jja_subd, world, "JJA", "Subduction", subd_scale,c(6:8))
+map_subd_son <- plot_gam_map(pred_son_subd, world, "SON", "Subduction", subd_scale,c(9:11))
 
-combined_subd <- (map_subd_djf + map_subd_mam) / (map_subd_jja + map_subd_son) +
-  plot_annotation(title = "GAM-Estimated Probability of Subduction Events (Discrete Scale)")
-combined_subd
+
+combined_subd <- ggarrange(map_subd_djf,map_subd_mam,map_subd_jja,map_subd_son,ncol = 2,nrow=2,
+          common.legend = T,legend="bottom")
 
 ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_discrete_4seasons.png",
-       combined_subd, width = 14, height = 10)
+       combined_subd, width = 18, height = 10)
 
 ###############################################################################
 # 6) Build and Plot Carbon Subduction GAM for Each Season
 ###############################################################################
 
-gam_djf_carb <- fit_gam_season(merged_carbon_counts_djf,  k_value = 300)
-gam_mam_carb <- fit_gam_season(merged_carbon_counts_mam,  k_value = 300)
-gam_jja_carb <- fit_gam_season(merged_carbon_counts_jja,  k_value = 300)
-gam_son_carb <- fit_gam_season(merged_carbon_counts_son,  k_value = 300)
+gam_djf_carb <- fit_gam_season(merged_carbon_counts_djf,  k_value = 600)
+gam_mam_carb <- fit_gam_season(merged_carbon_counts_mam,  k_value = 600)
+gam_jja_carb <- fit_gam_season(merged_carbon_counts_jja,  k_value = 600)
+gam_son_carb <- fit_gam_season(merged_carbon_counts_son,  k_value = 600)
 
 # Predict
 pred_djf_carb <- predict_gam(gam_djf_carb, merged_carbon_counts_djf, step = 1)
@@ -517,361 +563,17 @@ carb_max <- max(carb_values, na.rm = TRUE)
 # Discrete color scale for carbon subduction
 carb_scale <- make_discrete_scale(carb_min, carb_max, binwidth = 0.05)
 
-map_carb_djf <- plot_gam_map(pred_djf_carb, world, "DJF", "Carbon Subduction", carb_scale)
-map_carb_mam <- plot_gam_map(pred_mam_carb, world, "MAM", "Carbon Subduction", carb_scale)
-map_carb_jja <- plot_gam_map(pred_jja_carb, world, "JJA", "Carbon Subduction", carb_scale)
-map_carb_son <- plot_gam_map(pred_son_carb, world, "SON", "Carbon Subduction", carb_scale)
+map_carb_djf <- plot_gam_map(pred_djf_carb, world, "DJF", "Carbon Subduction", carb_scale,c(12,1,2))
+map_carb_mam <- plot_gam_map(pred_mam_carb, world, "MAM", "Carbon Subduction", carb_scale,c(3:5))
+map_carb_jja <- plot_gam_map(pred_jja_carb, world, "JJA", "Carbon Subduction", carb_scale,c(6:8))
+map_carb_son <- plot_gam_map(pred_son_carb, world, "SON", "Carbon Subduction", carb_scale,c(9:11))
 
-combined_carb <- (map_carb_djf + map_carb_mam) / (map_carb_jja + map_carb_son) +
-  plot_annotation(title = "GAM-Estimated Probability of Carbon Subduction Events (Discrete Scale)")
+combined_carb <- ggarrange(map_carb_djf,map_carb_mam,map_carb_jja,map_carb_son,ncol = 2,nrow=2,
+                           common.legend = T,legend="bottom")
 
 ggsave("figures/TimeSpaceVar/4SEASONS/gam_carbon_subduction_discrete_4seasons.png",
-       combined_carb, width = 14, height = 10)
+       combined_carb, width = 18, height = 10)
 
-###########################################################
-### 7. Add stippling DJF with the SAME discrete subd_scale
-############################################################
-
-# We assume subd_scale is already defined, e.g.:
-# subd_scale <- make_discrete_scale(subd_min, subd_max, binwidth = 0.05)
-
-gam_resolution <- 1       # Resolution for GAM predictions
-stipple_resolution <- 5   # Coarser resolution for stippling
-
-# 1) Aggregate Argo float locations to 5° resolution for stippling
-argo_bins <- df_argo_clean %>%
-  filter(month(TIME) %in% c(12, 1, 2)) %>%
-  mutate(
-    lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
-  ) %>%
-  group_by(lon_bin_stipple, lat_bin_stipple) %>%
-  summarize(count = n(), .groups = "drop")  # Count profiles per 5° bin
-
-# 2) Identify undersampled areas
-undersampled <- argo_bins %>%
-  filter(count < 5)  # or any other threshold you prefer
-
-# 3) Grab DJF prediction grid from the existing subduction GAM results
-#    pred_djf_subd is the data frame with columns: lon_bin, lat_bin, proportion
-prediction_grid <- pred_djf_subd  
-
-# Keep track of the coarser bins for stippling
-prediction_grid <- prediction_grid %>%
-  mutate(
-    lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
-  )
-
-# 4) Merge GAM predictions with undersampled areas
-prediction_grid <- prediction_grid %>%
-  left_join(undersampled,
-            by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
-  mutate(
-    undersampled = ifelse(is.na(count), FALSE, TRUE)
-  )
-
-# 5) Plot with the shared 'subd_scale' instead of scale_fill_viridis_c()
-gam_map_with_stippling_djf <- ggplot() +
-  # Tile layer of subduction probability at 1° resolution
-  geom_tile(data = prediction_grid,
-            aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid,
-               aes(x = lon_bin, y = lat_bin, z = proportion),
-               color = "white", alpha = 0.3) +
-  # Add stippling where undersampled == TRUE
-  geom_point(
-    data = filter(prediction_grid, undersampled == TRUE),
-    aes(x = lon_bin_stipple, y = lat_bin_stipple),
-    color = "white", alpha = 0.6, size = 0.25, shape = 20
-  ) +
-  # World map for context
-  geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
-  coord_sf(expand = FALSE) +
-  labs(
-    title = "GAM-Estimated Probability of Subduction Events (DJF + Stippling)",
-    x = "Longitude",
-    y = "Latitude",
-    fill = "Probability"
-  ) +
-  # Here is where we reuse the COMMON discrete scale
-  subd_scale +
-  theme_minimal()
-
-# Display or save the final figure
-gam_map_with_stippling_djf
-# ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_djf_stipple_sameScale.png",
-#        gam_map_with_stippling_djf, width = 10, height = 7)
-
-
-
-###########################################################
-### 7. Add stippling DJF ########################################
-#############################################################
-# Define resolutions
-gam_resolution <- 1   # Resolution for GAM predictions
-stipple_resolution <- 5  # Coarser resolution for undersampling shading
-
-# Step 1: Aggregate Argo float locations to 10° resolution
-argo_bins <- df_argo_clean %>%
-  filter(month(TIME) %in% c(12, 1, 2))  %>%
-  mutate(
-    lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
-  ) %>%
-  group_by(lon_bin_stipple, lat_bin_stipple) %>%
-  summarize(count = n(), .groups = "drop")  # Count profiles per 10° bin
-
-# Step 2: Identify undersampled areas
-undersampled <- argo_bins %>%
-  filter(count < 5)  # Define threshold for undersampling
-
-# Step 3: Prepare GAM prediction data at 1° resolution
-# Assuming `prediction_grid` is your GAM prediction output (from predict_gam)
-prediction_grid <- pred_djf_subd  # Example for DJF GAM predictions
-
-# Keep GAM grid at 1° resolution
-prediction_grid <- prediction_grid %>%
-  mutate(
-    lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
-  )
-
-# Step 4: Merge GAM predictions with undersampled areas
-# Add a TRUE/FALSE column indicating undersampled cells at 10° resolution
-prediction_grid <- prediction_grid %>%
-  left_join(undersampled, by = c("lon_bin_stipple" = "lon_bin_stipple",
-                                 "lat_bin_stipple" = "lat_bin_stipple")) %>%
-  mutate(
-    undersampled = ifelse(is.na(count), FALSE, TRUE)  # Mark as TRUE if undersampled
-  )
-
-# Step 5: Plot GAM map with stippling for undersampled areas
-gam_map_with_stippling_djf <- ggplot() +
-  # GAM predictions as a tile layer at 1° resolution
-  geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = proportion),
-               color = "white", alpha = 0.3) +
-  # Add stippling for unwhitedersampled areas at 10° resolution
-  geom_point(data = filter(prediction_grid, undersampled == TRUE),
-             aes(x = lon_bin_stipple, y = lat_bin_stipple),
-             color = "white", alpha = 0.6, size = 0.25, shape = 20) +
-  # World map for context
-  geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
-  coord_sf(expand = FALSE) +
-  labs(
-    title = "GAM-Estimated Probability of Subduction Events (DJF)",
-    x = "Longitude",
-    y = "Latitude",
-    fill = "Probability"
-  ) +
-  scale_fill_viridis_c() +
-  theme_minimal()
-
-# Display the plot
-print(gam_map_with_stippling_djf)
-
-#####
-##  stippling MAM
-#####
-# Define resolutions
-gam_resolution <- 1   # Resolution for GAM predictions
-stipple_resolution <- 5  # Coarser resolution for undersampling shading
-
-# Step 1: Aggregate Argo float locations to 10° resolution
-argo_bins <- df_argo_clean %>%
-  filter(month(TIME) %in% c(3, 4, 5))  %>%
-  mutate(
-    lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
-  ) %>%
-  group_by(lon_bin_stipple, lat_bin_stipple) %>%
-  summarize(count = n(), .groups = "drop")  # Count profiles per 10° bin
-
-# Step 2: Identify undersampled areas
-undersampled <- argo_bins %>%
-  filter(count < 5)  # Define threshold for undersampling
-
-# Step 3: Prepare GAM prediction data at 1° resolution
-# Assuming `prediction_grid` is your GAM prediction output (from predict_gam)
-prediction_grid <- pred_mam_subd  # Example for DJF GAM predictions
-
-# Keep GAM grid at 1° resolution
-prediction_grid <- prediction_grid %>%
-  mutate(
-    lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
-  )
-
-# Step 4: Merge GAM predictions with undersampled areas
-# Add a TRUE/FALSE column indicating undersampled cells at 10° resolution
-prediction_grid <- prediction_grid %>%
-  left_join(undersampled, by = c("lon_bin_stipple" = "lon_bin_stipple",
-                                 "lat_bin_stipple" = "lat_bin_stipple")) %>%
-  mutate(
-    undersampled = ifelse(is.na(count), FALSE, TRUE)  # Mark as TRUE if undersampled
-  )
-
-# Step 5: Plot GAM map with stippling for undersampled areas
-gam_map_with_stippling_mam <- ggplot() +
-  # GAM predictions as a tile layer at 1° resolution
-  geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = proportion),
-               color = "white", alpha = 0.3) +
-  # Add stippling for unwhitedersampled areas at 10° resolution
-  geom_point(data = filter(prediction_grid, undersampled == TRUE),
-             aes(x = lon_bin_stipple, y = lat_bin_stipple),
-             color = "white", alpha = 0.6, size = 0.25, shape = 20) +
-  # World map for context
-  geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
-  coord_sf(expand = FALSE) +
-  labs(
-    title = "GAM-Estimated Probability of Subduction Events (MAM)",
-    x = "Longitude",
-    y = "Latitude",
-    fill = "Probability"
-  ) +
-  scale_fill_viridis_c() +
-  theme_minimal()
-
-# Display the plot
-print(gam_map_with_stippling_mam)
-
-
-# Define resolutions
-gam_resolution <- 1   # Resolution for GAM predictions
-stipple_resolution <- 5  # Coarser resolution for undersampling shading
-
-# Step 1: Aggregate Argo float locations to 10° resolution
-argo_bins <- df_argo_clean %>%
-  filter(month(TIME) %in% c(6, 7, 8))  %>%
-  mutate(
-    lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
-  ) %>%
-  group_by(lon_bin_stipple, lat_bin_stipple) %>%
-  summarize(count = n(), .groups = "drop")  # Count profiles per 10° bin
-
-# Step 2: Identify undersampled areas
-undersampled <- argo_bins %>%
-  filter(count < 5)  # Define threshold for undersampling
-
-# Step 3: Prepare GAM prediction data at 1° resolution
-# Assuming `prediction_grid` is your GAM prediction output (from predict_gam)
-prediction_grid <- pred_jja_subd  # Example for DJF GAM predictions
-
-# Keep GAM grid at 1° resolution
-prediction_grid <- prediction_grid %>%
-  mutate(
-    lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
-  )
-
-# Step 4: Merge GAM predictions with undersampled areas
-# Add a TRUE/FALSE column indicating undersampled cells at 10° resolution
-prediction_grid <- prediction_grid %>%
-  left_join(undersampled, by = c("lon_bin_stipple" = "lon_bin_stipple",
-                                 "lat_bin_stipple" = "lat_bin_stipple")) %>%
-  mutate(
-    undersampled = ifelse(is.na(count), FALSE, TRUE)  # Mark as TRUE if undersampled
-  )
-
-# Step 5: Plot GAM map with stippling for undersampled areas
-gam_map_with_stippling_jja <- ggplot() +
-  # GAM predictions as a tile layer at 1° resolution
-  geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = proportion),
-               color = "white", alpha = 0.3) +
-  # Add stippling for unwhitedersampled areas at 10° resolution
-  geom_point(data = filter(prediction_grid, undersampled == TRUE),
-             aes(x = lon_bin_stipple, y = lat_bin_stipple),
-             color = "white", alpha = 0.6, size = 0.25, shape = 20) +
-  # World map for context
-  geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
-  coord_sf(expand = FALSE) +
-  labs(
-    title = "GAM-Estimated Probability of Subduction Events (JJA)",
-    x = "Longitude",
-    y = "Latitude",
-    fill = "Probability"
-  ) +
-  scale_fill_viridis_c() +
-  theme_minimal()
-
-# Display the plot
-print(gam_map_with_stippling_jja)
-
-
-# SON #
-
-# Define resolutions
-gam_resolution <- 1   # Resolution for GAM predictions
-stipple_resolution <- 5  # Coarser resolution for undersampling shading
-
-# Step 1: Aggregate Argo float locations to 10° resolution
-argo_bins <- df_argo_clean %>%
-  filter(month(TIME) %in% c(9, 10, 11))  %>%
-  mutate(
-    lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
-  ) %>%
-  group_by(lon_bin_stipple, lat_bin_stipple) %>%
-  summarize(count = n(), .groups = "drop")  # Count profiles per 10° bin
-
-# Step 2: Identify undersampled areas
-undersampled <- argo_bins %>%
-  filter(count < 5)  # Define threshold for undersampling
-
-# Step 3: Prepare GAM prediction data at 1° resolution
-# Assuming `prediction_grid` is your GAM prediction output (from predict_gam)
-prediction_grid <- pred_son_subd  
-
-# Keep GAM grid at 1° resolution
-prediction_grid <- prediction_grid %>%
-  mutate(
-    lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
-  )
-
-# Step 4: Merge GAM predictions with undersampled areas
-# Add a TRUE/FALSE column indicating undersampled cells at 10° resolution
-prediction_grid <- prediction_grid %>%
-  left_join(undersampled, by = c("lon_bin_stipple" = "lon_bin_stipple",
-                                 "lat_bin_stipple" = "lat_bin_stipple")) %>%
-  mutate(
-    undersampled = ifelse(is.na(count), FALSE, TRUE)  # Mark as TRUE if undersampled
-  )
-
-# Step 5: Plot GAM map with stippling for undersampled areas
-gam_map_with_stippling_son <- ggplot() +
-  # GAM predictions as a tile layer at 1° resolution
-  geom_tile(data = prediction_grid, aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-  geom_contour(data = prediction_grid, aes(x = lon_bin, y = lat_bin, z = proportion),
-               color = "white", alpha = 0.3) +
-  # Add stippling for unwhitedersampled areas at 10° resolution
-  geom_point(data = filter(prediction_grid, undersampled == TRUE),
-             aes(x = lon_bin_stipple, y = lat_bin_stipple),
-             color = "white", alpha = 0.6, size = 0.25, shape = 20) +
-  # World map for context
-  geom_sf(data = world, fill = "black", color = "black", inherit.aes = FALSE) +
-  coord_sf(expand = FALSE) +
-  labs(
-    title = "GAM-Estimated Probability of Subduction Events (JJA)",
-    x = "Longitude",
-    y = "Latitude",
-    fill = "Probability"
-  ) +
-  scale_fill_viridis_c() +
-  theme_minimal()
-
-# Display the plot
-print(gam_map_with_stippling_son)
-
-
-
-###############################################################################
-# Done!
-###############################################################################
 
 # Summary:
 # - We create 8 total plots: 4 for subduction, 4 for carbon subduction,
@@ -924,12 +626,12 @@ print(gam_map_with_stippling_son)
 # }
 # 
 # 
- df_argo_clean <- add_month_region(df_argo_clean)
- df_complete_clean <- add_month_region(df_complete_clean)
- df_carbon_clean <- add_month_region(df_carbon_clean)
+df_argo_clean <- add_month_region(df_argo_clean)
+df_complete_clean <- add_month_region(df_complete_clean)
+df_carbon_clean <- add_month_region(df_carbon_clean)
 # 
 # # Step 2: Compute Probabilities by Region and Month
- compute_monthly_probabilities <- function(df_argo, df_events) {
+compute_monthly_probabilities <- function(df_argo, df_events) {
    # Total Argo profiles by region and month
    total_counts <- df_argo %>%
      group_by(region, month) %>%
@@ -986,7 +688,6 @@ plot_subduction <- plot_monthly_histograms(monthly_probs_subduction, "Probabilit
 # Plot carbon subduction probabilities
 plot_carbon_subduction <- plot_monthly_histograms(monthly_probs_carbon, "Probability that an Argo Float captures a subduction event with carbon")
 
-
 # Save the plots
 ggsave("figures/seasonal_subduction_by_region.png", plot = plot_subduction, width = 10, height = 8)
 ggsave("figures/seasonal_carbon_subduction_by_region.png", plot = plot_carbon_subduction, width = 10, height = 8)
@@ -1032,6 +733,362 @@ print(seasonality_test_subduction)
 
 print("Carbon Subduction Seasonality Test:")
 print(seasonality_test_carbon)
+
+####################################################
+##### SEASONALITY OF CARBON SUBDUCTION WITH CHLORO #
+####################################################
+df_chloro_summary <- read_csv(file = "/data/GLOBARGO/data/df_chloro_monthly_climatology_seawifs.csv")
+
+df_chloro_summary <- df_chloro_summary %>% na.omit() 
+
+##
+# ----- STEP 1: Merge the datasets -----
+
+# Convert monthly_probs_carbon$month from abbreviated factor to numeric month
+# (Assuming monthly_probs_carbon$month is a factor like "Jan", "Feb", etc.)
+monthly_probs <- monthly_probs_carbon %>%
+  mutate(MONTH = as.numeric(factor(month,
+                                   levels = c("Jan","Feb","Mar","Apr","May","Jun",
+                                              "Jul","Aug","Sep","Oct","Nov","Dec"))))
+
+
+# Merge by region and month (using an inner join so that only matching rows are kept)
+merged_data <- monthly_probs %>%
+  inner_join(df_chloro_summary, by = c("region", "MONTH"))
+
+
+# Make sure region is a factor (so that interactions are interpreted correctly)
+merged_data <- merged_data %>%
+  mutate(region = as.factor(region))
+
+# ----- STEP 2: Create a time-adjusted (lag) chlorophyll predictor -----
+# We assume that if chlorophyll peaks 1-2 months after the subduction probability,
+# then the chlorophyll measured one month later (lag by 1) might be a better predictor.
+# Create a new variable (CHLA_lag1) by grouping by region and shifting CHLA_med by 1 month.
+
+# ----- STEP 3: Fit GLM models -----
+# Define the candidate predictors
+# Assuming merged_data already contains: 
+#   - count_event, count_total, region, MONTH, CHLA_med, CHLA_mean
+# Compute additional lag predictors (lags 1 to 11) by grouping by region
+
+# Assuming merged_data already contains: 
+#   - count_event, count_total, region, MONTH, CHLA_med, CHLA_mean
+# Compute additional lag predictors (lags 1 to 11) by grouping by region
+
+cyclic_lead <- function(x, n) {
+  len <- length(x)
+  sapply(seq_along(x), function(i) x[((i - 1 + n) %% len) + 1])
+}
+
+merged_data <- merged_data %>%
+  group_by(region) %>%
+  arrange(MONTH) %>%
+  mutate(
+    CHLA_lead1_mean  = cyclic_lead(CHLA_mean,  1),
+    CHLA_lead2_mean  = cyclic_lead(CHLA_mean,  2),
+    CHLA_lead3_mean  = cyclic_lead(CHLA_mean,  3),
+    CHLA_lead4_mean  = cyclic_lead(CHLA_mean,  4),
+    CHLA_lead5_mean  = cyclic_lead(CHLA_mean,  5),
+    CHLA_lead6_mean  = cyclic_lead(CHLA_mean,  6),
+    CHLA_lead7_mean  = cyclic_lead(CHLA_mean,  7),
+    CHLA_lead8_mean  = cyclic_lead(CHLA_mean,  8),
+    CHLA_lead9_mean  = cyclic_lead(CHLA_mean,  9),
+    CHLA_lead10_mean = cyclic_lead(CHLA_mean, 10),
+    CHLA_lead11_mean = cyclic_lead(CHLA_mean, 11)
+  ) %>%
+  ungroup()
+
+# Define candidate predictors (lag 0 is included as the “same month” values)
+predictors <- c("CHLA_mean", "CHLA_med",
+                paste0("CHLA_lead", 1:11, "_mean"))
+
+# Create an empty list to store candidate formulas and a vector for model names.
+candidate_formulas <- list()
+model_names <- c()
+
+# For each predictor, build two candidate formulas:
+#   (1) Additive: ~ region + predictor
+#   (2) Interaction: ~ region * predictor
+for (pred in predictors) {
+  # Additive model formula
+  f_add <- as.formula(
+    paste("cbind(count_event, count_total - count_event) ~ region +", pred)
+  )
+  model_label_add <- paste(pred, "additive", sep = "_")
+  candidate_formulas[[model_label_add]] <- f_add
+  model_names <- c(model_names, model_label_add)
+  
+  # Interaction model formula
+  f_int <- as.formula(
+    paste("cbind(count_event, count_total - count_event) ~ region *", pred)
+  )
+  model_label_int <- paste(pred, "interaction", sep = "_")
+  candidate_formulas[[model_label_int]] <- f_int
+  model_names <- c(model_names, model_label_int)
+}
+
+# Fit all candidate models and store them in a list
+models <- lapply(candidate_formulas, function(formula) {
+  glm(formula,
+      data = merged_data,
+      family = binomial(link = "logit"))
+})
+
+# Extract AIC values for all models
+model_aics <- sapply(models, AIC)
+
+# Order the models by AIC (lowest AIC is best)
+sorted_aics <- sort(model_aics)
+print("Model AIC values (sorted):")
+print(sorted_aics)
+
+best_model <- models[["CHLA_lead2_mean_additive"]]
+summary(best_model)
+
+model_interaction <- glm(cbind(count_event, count_total - count_event) ~ 
+                           region * CHLA_lead2_mean,
+                         data = merged_data,
+                         family = binomial(link = "logit"))
+summary(model_interaction)
+
+
+null_model <- models[["CHLA_mean_additive"]]
+null_model %>% summary()
+
+library(broom)
+library(dplyr)
+
+region_slopes <- merged_data %>%
+  group_by(region) %>%
+  do(tidy(glm(cbind(count_event, count_total - count_event) ~ CHLA_lead2_mean,
+              data = .,
+              family = binomial(link = "logit")))) %>%
+  filter(term == "CHLA_lead2_mean")
+
+print(region_slopes)
+
+# Example usage:
+# Assuming monthly_probs_carbon and df_chloro_summary are already in your workspace:
+
+
+plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
+  # Convert month to numeric if needed
+  if(is.factor(monthly_probs$month) || is.ordered(monthly_probs$month)) {
+    monthly_probs <- monthly_probs %>%
+      mutate(MONTH = as.numeric(factor(month,
+                                       levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))))
+  } else {
+    monthly_probs <- monthly_probs %>% rename(MONTH = month)
+  }
+  
+  # Compute a common scaling factor based on the maximum of both chlorophyll columns.
+  max_chloro <- max(c(max(merged_data$CHLA_mean, na.rm = TRUE),
+                      max(merged_data$CHLA_lead2_mean, na.rm = TRUE)))
+  scale_factor <- max(monthly_probs$proportion, na.rm = TRUE) / max_chloro
+  
+  # Filter out missing values
+  monthly_probs <- monthly_probs %>%
+    filter(!is.na(region), !is.na(proportion), !is.na(MONTH))
+  
+  ggplot(monthly_probs, aes(x = MONTH)) +
+    # Bar plot for probability of carbon subduction
+    geom_bar(aes(y = proportion, fill = region),
+             stat = "identity",
+             position = "dodge",
+             color = "darkblue",
+             alpha = 0.8) +
+    # Overlay real-time chlorophyll (CHLA_mean) as a darkblue solid line and points
+    geom_line(data = merged_data,
+              aes(x = MONTH, y = CHLA_mean * scale_factor, group = region),
+              color = "darkblue",
+              size = 1.2) +
+    geom_point(data = merged_data,
+               aes(x = MONTH, y = CHLA_mean * scale_factor, group = region),
+               color = "darkblue",
+               size = 2) +
+    # Overlay chlorophyll 2 months later (CHLA_lead2_mean) as a red dashed line and points
+    geom_line(data = merged_data,
+              aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+              color = "red",
+              size = 1.2,
+              linetype = "dashed") +
+    geom_point(data = merged_data,
+               aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+               color = "red",
+               size = 2) +
+    facet_wrap(~ region, ncol = 2) +
+    scale_fill_viridis(discrete = TRUE) +
+    labs(
+      title = title,
+      x = "Month",
+      y = "Probability of Subduction"
+    ) +
+    # Secondary axis for chlorophyll values (original units)
+    scale_y_continuous(
+      sec.axis = sec_axis(~ . / scale_factor, name = "Mean Chlorophyll")
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text = element_text(size = 15, face = "bold"),
+      axis.text.x = element_text(size = 15, angle = 45, hjust = 1),
+      axis.title.y.right = element_text(color = "blue", size = 16),
+      axis.text.y.right  = element_text(color = "blue", size = 12),
+      title = element_text(size = 15)
+    ) +
+    guides(fill = "none")
+}
+
+# Example usage:
+both_realtime_and_lead2 <- plot_monthly_histograms(monthly_probs_carbon, df_chloro_summary, 
+                        "Monthly Probability of Carbon Subduction \nwith Seawifs Mean Chlorophyll\n(Real-time (blue) and 2 months later (red))")
+
+ggsave(both_realtime_and_lead2,
+       filename = "figures/monthly_prob_carb_subd_chlorophyll_realtime_lead2.png",
+       width = 10,height = 8)
+
+plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
+  # Convert month to numeric if needed
+  if(is.factor(monthly_probs$month) || is.ordered(monthly_probs$month)) {
+    monthly_probs <- monthly_probs %>%
+      mutate(MONTH = as.numeric(factor(month,
+                                       levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))))
+  } else {
+    monthly_probs <- monthly_probs %>% rename(MONTH = month)
+  }
+  
+  # Compute a common scaling factor based on the maximum of both chlorophyll columns.
+  max_chloro <- max(c(max(merged_data$CHLA_mean, na.rm = TRUE),
+                      max(merged_data$CHLA_lead2_mean, na.rm = TRUE)))
+  scale_factor <- max(monthly_probs$proportion, na.rm = TRUE) / max_chloro
+  
+  # Filter out missing values
+  monthly_probs <- monthly_probs %>%
+    filter(!is.na(region), !is.na(proportion), !is.na(MONTH))
+  
+  ggplot(monthly_probs, aes(x = MONTH)) +
+    # Bar plot for probability of carbon subduction
+    geom_bar(aes(y = proportion, fill = region),
+             stat = "identity",
+             position = "dodge",
+             color = "darkblue",
+             alpha = 0.8) +
+    # Overlay real-time chlorophyll (CHLA_mean) as a darkblue solid line and points
+    geom_line(data = merged_data,
+              aes(x = MONTH, y = CHLA_mean * scale_factor, group = region),
+              color = "darkblue",
+              size = 1.2) +
+    geom_point(data = merged_data,
+               aes(x = MONTH, y = CHLA_mean * scale_factor, group = region),
+               color = "darkblue",
+               size = 2) +
+  #  # Overlay chlorophyll 2 months later (CHLA_lead2_mean) as a red dashed line and points
+  #  geom_line(data = merged_data,
+  #            aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+  #            color = "red",
+  #            size = 1.2,
+  #            linetype = "dashed") +
+  #  geom_point(data = merged_data,
+  #             aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+  #             color = "red",
+  #             size = 2) +
+    facet_wrap(~ region, ncol = 2) +
+    scale_fill_viridis(discrete = TRUE) +
+    labs(
+      title = title,
+      x = "Month",
+      y = "Probability of Subduction"
+    ) +
+    # Secondary axis for chlorophyll values (original units)
+    scale_y_continuous(
+      sec.axis = sec_axis(~ . / scale_factor, name = "Mean Chlorophyll")
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text = element_text(size = 15, face = "bold"),
+      axis.text.x = element_text(size = 15, angle = 45, hjust = 1),
+      axis.title.y.right = element_text(color = "blue", size = 16),
+      axis.text.y.right  = element_text(color = "blue", size = 12),
+      title = element_text(size = 15)
+    ) +
+    guides(fill = "none")
+}
+
+# Example usage:
+realtime_only <- plot_monthly_histograms(monthly_probs_carbon, df_chloro_summary, 
+                                                   "Monthly Probability of Carbon Subduction \nwith Seawifs Mean Chlorophyll\nReal-time (blue)")
+
+ggsave(realtime_only,
+       filename = "figures/monthly_prob_carb_subd_chlorophyll_realtime.png",
+       width = 10,height = 8)
+
+plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
+  # Convert month to numeric if needed
+  if(is.factor(monthly_probs$month) || is.ordered(monthly_probs$month)) {
+    monthly_probs <- monthly_probs %>%
+      mutate(MONTH = as.numeric(factor(month,
+                                       levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))))
+  } else {
+    monthly_probs <- monthly_probs %>% rename(MONTH = month)
+  }
+  
+  # Compute a common scaling factor based on the maximum of both chlorophyll columns.
+  max_chloro <- max(c(max(merged_data$CHLA_mean, na.rm = TRUE),
+                      max(merged_data$CHLA_lead2_mean, na.rm = TRUE)))
+  scale_factor <- max(monthly_probs$proportion, na.rm = TRUE) / max_chloro
+  
+  # Filter out missing values
+  monthly_probs <- monthly_probs %>%
+    filter(!is.na(region), !is.na(proportion), !is.na(MONTH))
+  
+  ggplot(monthly_probs, aes(x = MONTH)) +
+    # Bar plot for probability of carbon subduction
+    geom_bar(aes(y = proportion, fill = region),
+             stat = "identity",
+             position = "dodge",
+             color = "darkblue",
+             alpha = 0.8) +
+      # Overlay chlorophyll 2 months later (CHLA_lead2_mean) as a red dashed line and points
+      geom_line(data = merged_data,
+                aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+                color = "darkblue",
+                size = 1.2) +
+      geom_point(data = merged_data,
+                 aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+                 color = "darkblue",
+                 size = 2) +
+    facet_wrap(~ region, ncol = 2) +
+    scale_fill_viridis(discrete = TRUE) +
+    labs(
+      title = title,
+      x = "Month",
+      y = "Probability of Subduction"
+    ) +
+    # Secondary axis for chlorophyll values (original units)
+    scale_y_continuous(
+      sec.axis = sec_axis(~ . / scale_factor, name = "Mean Chlorophyll")
+    ) +
+    theme_minimal() +
+    theme(
+      strip.text = element_text(size = 15, face = "bold"),
+      axis.text.x = element_text(size = 15, angle = 45, hjust = 1),
+      axis.title.y.right = element_text(color = "blue", size = 16),
+      axis.text.y.right  = element_text(color = "blue", size = 12),
+      title = element_text(size = 15)
+    ) +
+    guides(fill = "none")
+}
+
+# Example usage:
+lead2_only <- plot_monthly_histograms(monthly_probs_carbon, df_chloro_summary, 
+                                         "Monthly Probability of Carbon Subduction \nwith Seawifs Mean Chlorophyll\n Two months later (blue) ")
+
+ggsave(lead2_only,
+       filename = "figures/monthly_prob_carb_subd_chlorophyll_lead2.png",
+       width = 10,height = 8)
 
 
 #############################################
@@ -1765,3 +1822,4 @@ final_carb_plot <- combined_carb_maps +
 
 ggsave("figures/TimeSpaceVar/4SEASONS/gam_carbon_subduction_stippled_4seasons.png",
        final_carb_plot, width = 7, height = 5)
+
