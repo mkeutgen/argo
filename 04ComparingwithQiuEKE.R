@@ -369,7 +369,7 @@ map_eke_bl <- ggplot() +
                show.legend = TRUE) +
   scale_color_brewer(
     palette = "Reds",
-    name = "Probability of carbon subduction (%)",
+    name = "Probability of subduction (%)",
     limits = global_contour_labels,
     breaks = global_contour_labels,
     labels = function(x) paste0(x, "%")
@@ -388,7 +388,7 @@ map_eke_bl <- ggplot() +
   # 6. Coordinate system and labels
   coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
   labs(
-    title = paste("Balanced Eddy Kinetic Energy & Carbon Subduction Probability"),
+    title = paste("Balanced Eddy Kinetic Energy & Subduction Probability"),
     x = "Longitude",
     y = "Latitude"
   ) +
@@ -430,7 +430,7 @@ map_eke_unbl <-  ggplot() +
                show.legend = TRUE) +
   scale_color_brewer(
     palette = "Reds",
-    name = "Probability of carbon subduction (%)",
+    name = "Probability of subduction (%)",
     limits = global_contour_labels,
     breaks = global_contour_labels,
     labels = function(x) paste0(x, "%")
@@ -439,7 +439,7 @@ map_eke_unbl <-  ggplot() +
   # 4. Add stippling for undersampled cells
   geom_point(data = undersampled_corners,
              aes(x = LON, y = LAT),
-             color = "black", alpha = 0.6, size = 1.5, shape = 20) +
+             color = "white", alpha = 0.6, size = 1.5, shape = 20) +
   
   # 5. Overlay the world map
   geom_sf(data = world,
@@ -449,7 +449,7 @@ map_eke_unbl <-  ggplot() +
   # 6. Coordinate system and labels
   coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
   labs(
-    title = paste("Unbalanced Eddy Kinetic Energy & Carbon Subduction Probability"),
+    title = paste("Unbalanced Eddy Kinetic Energy & Eddy Subduction Probability"),
     x = "Longitude",
     y = "Latitude"
   ) +
@@ -466,7 +466,7 @@ print(map_eke_unbl)
 ggsave(plot=map_eke_bl,filename = "figures/smoothed_map_eke_bl.png",width = 15,height = 10)
 ggsave(plot=map_eke_unbl,filename = "figures/smoothed_map_eke_unbl.png",width = 15,height = 10)
 
-combined_discrete_eke_map <- (eke_balanced_map + map_subd_full) / (eke_unbalanced_map + map_subd_full)
+ombined_discrete_eke_map <- (eke_balanced_map + map_subd_full) / (eke_unbalanced_map + map_subd_full)
 
 
 combined_smoothed_eke_map <- (map_eke_bl + map_subd_full) / (map_eke_unbl + map_subd_full)

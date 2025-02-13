@@ -33,6 +33,93 @@ df_argo_clean <- read_csv("data/df_argo_loc.csv")
 df_complete_clean <- read_csv("data/df_eddy_subduction_anom.csv")
 df_carbon_clean <- read_csv("data/df_carbon_subduction_anom.csv")
 
+# Find distinct WMO values for floats in the Kuroshio extension (assumed region)
+kuroshio_floats <- df_argo_clean %>%
+  filter(LONGITUDE >= 140, LONGITUDE <= 160,
+         LATITUDE >= 30, LATITUDE <= 40) %>%
+  distinct(WMO) %>%
+  arrange(WMO)
+
+southern_ocean_floats <- df_argo_clean %>%
+  filter(LONGITUDE >= 151, LONGITUDE <= 180,
+         LATITUDE >= -65, LATITUDE <= -55) %>%
+  distinct(WMO) %>%
+  arrange(WMO)
+
+southern_ocean_floats
+
+df_argo_clean %>% filter(WMO == "2902295")
+
+# Define a lookup vector (names are the float numbers as strings)
+study_map <- c("5906511" = "Chen et al., 2021", # true value : 5904034
+               "2902878" = "Chen et al., 2021", # true value : 2901556
+               "5904677" = "Llort et al., 2018",
+               "5904479" = "Johnson & Omand, 2021",
+               "5904105" = "Lacour et al., 2023", # true value : 6901516
+               "5904179" = "Lacour et al., 2023", # true value : 6901480
+               "5904672" = "Chen & Schofield, 2024",
+               "5904673" = "Chen & Schofield, 2024",
+               "5906206" = "Chen & Schofield, 2024")
+
+# Now add a new column to df_argo_clean.
+# We first convert the WMO column to character (in case it's numeric)
+# and then check if it matches one of the keys in study_map.
+df_argo_clean <- df_argo_clean %>%
+  mutate("Previous studies" = ifelse(as.character(WMO) %in% names(study_map),
+                                     study_map[as.character(WMO)],
+                                     "not analyzed yet"))
+
+df_argo_clean$`Previous studies` %>% unique()
+
+df_argo_sf <- df_argo_clean %>% filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
+  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
+  st_transform(crs = "+proj=robin")
+
+# Split the data: one for "not analyzed yet" and one for all other studies
+df_argo_black <- df_argo_sf %>% filter(`Previous studies` == "not analyzed yet")
+df_argo_other <- df_argo_sf %>% filter(`Previous studies` != "not analyzed yet")
+
+plot_argo_distrib <- ggplot() +
+  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
+  # Plot "not analyzed yet" points first (in black)
+  geom_sf(data = df_argo_black, 
+          aes(geometry = geometry), 
+          color = "black", 
+          alpha = 0.1, size = 2) +
+  # Then overlay points that have been analyzed, colored by the study
+  geom_sf(data = df_argo_other, 
+          aes(geometry = geometry, color = `Previous studies`), 
+          alpha = 0.9, size = 2) +
+  # Define the color scale with custom labels (asterisk for Chen et al. and Lacour et al.)
+  scale_color_manual(
+    values = c("Chen et al., 2021"    = "red",
+               "Llort et al., 2018"    = "blue",
+               "Johnson & Omand, 2021" = "green",
+               "Lacour et al., 2023"   = "purple",
+               "Chen & Schofield, 2024" = "pink"),
+    labels = c("Chen et al., 2021" = "Chen et al., 2021*",
+               "Llort et al., 2018" = "Llort et al., 2018",
+               "Johnson & Omand, 2021" = "Johnson & Omand, 2021",
+               "Lacour et al., 2023" = "Lacour et al., 2023*",
+               "Chen & Schofield, 2024" = "Chen & Schofield, 2024")
+  ) +
+  labs(
+    title = "Argo Profile Distribution: 125,826 Profiles",
+    subtitle = "Less than 15% of the Argo database has been analyzed for subduction signatures",
+    color = "Previous studies"
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    plot.title = element_text(face = "bold", size = 30, hjust = 0.5),
+    plot.subtitle = element_text(size = 25, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 20),
+    legend.text = element_text(size = 25),
+    panel.grid = element_blank()
+  )
+
+ggsave("figures/argo_distrib.png",plot = plot_argo_distrib,width = 20,height = 10,dpi = 300)
+
 
 # Define months for the four distinct periods: DJF, MAM, JJA, SON
 djf_months <- c(12, 1, 2)   # December, January, February
@@ -428,8 +515,20 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
     group_by(lon_bin_stipple, lat_bin_stipple) %>%
     summarize(count = n(), .groups = "drop")
   
+  full_grid <- expand.grid(
+    lon_bin_stipple = seq(-180, 175, by = 5),
+    lat_bin_stipple = seq(-90, 90, by = 5)
+  ) %>%
+    as_tibble()
+  
+  # Left join the existing argo_bins to the full grid and replace NAs with 0
+  argo_bins_full <- full_grid %>%
+    left_join(argo_bins, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
+    mutate(count = ifelse(is.na(count), 0, count))
+  
+
   # 2. Identify undersampled areas (e.g., fewer than 5 profiles)
-  undersampled <- argo_bins %>% filter(count < 5)
+  undersampled <- argo_bins_full %>% filter(count < 1)
   
   # 3. Generate corner points for each undersampled cell (4 corners per cell)
   undersampled_corners <- undersampled %>%
@@ -1502,324 +1601,4 @@ ggsave("figures/seasonal_carbon_subduction_depth_distribution.png",
 
 
 
-
-################################################""
-#################################################"
-
-# Gather all subduction probability values across the four seasons
-common_subd_values <- c(
-  pred_djf_subd$proportion,
-  pred_mam_subd$proportion,
-  pred_jja_subd$proportion,
-  pred_son_subd$proportion
-)
-
-common_subd_min <- 0   # Typically 0
-common_subd_max <- max(common_subd_values, na.rm = TRUE)
-
-# Option 1: Using a discrete binned scale
-#           (If you already have a function `make_discrete_scale`, use it here.)
-make_discrete_scale <- function(prob_min, prob_max, binwidth = 0.05) {
-  breaks_vec <- seq(prob_min, prob_max, by = binwidth)
-  scale_fill_viridis_b(
-    name = "Probability",
-    breaks = breaks_vec,
-    limits = c(prob_min, prob_max),
-    oob = scales::squish
-  )
-}
-subd_scale <- make_discrete_scale(common_subd_min, common_subd_max, binwidth = 0.05)
-
-# OR Option 2: A continuous scale — e.g.:
-# subd_scale <- scale_fill_viridis_c(limits = c(common_subd_min, common_subd_max),
-#                                    oob = scales::squish)
-#
-# Either way, you'll have a single color scale object, e.g. "subd_scale".
-
-
-library(dplyr)
-library(ggplot2)
-library(sf)
-library(patchwork)
-
-create_stippled_map <- function(df_argo_clean,
-                                pred_grid,          # e.g. pred_djf_subd
-                                months,             # c(12,1,2) for DJF
-                                resolution = 5,     # coarser resolution for stippling
-                                threshold = 5,      # <5 profiles = undersampled
-                                season_label = "DJF",
-                                color_scale = subd_scale,
-                                suppress = "none") { # should the legend be suppressed, "none" if you want to combine maps
-  
-  # 1) Coarse bin Argo data for "undersampled" identification
-  argo_bins <- df_argo_clean %>%
-    filter(lubridate::month(TIME) %in% months) %>%
-    mutate(
-      lon_bin_stipple = floor(LONGITUDE / resolution) * resolution,
-      lat_bin_stipple = floor(LATITUDE / resolution) * resolution
-    ) %>%
-    group_by(lon_bin_stipple, lat_bin_stipple) %>%
-    summarize(count = n(), .groups = "drop")
-  
-  # 2) Identify undersampled
-  undersampled <- argo_bins %>%
-    filter(count < threshold)
-  
-  # 3) Prepare the prediction data for mapping
-  prediction_grid <- pred_grid %>%
-    mutate(
-      lon_bin_stipple = floor(lon_bin / resolution) * resolution,
-      lat_bin_stipple = floor(lat_bin / resolution) * resolution
-    )
-  
-  # 4) Merge with undersampled info
-  prediction_grid <- prediction_grid %>%
-    left_join(undersampled,
-              by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
-    mutate(undersampled = ifelse(is.na(count), FALSE, TRUE))
-  
-  # 5) Plot
-  p <- ggplot() +
-    geom_tile(data = prediction_grid,
-              aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-    geom_contour(data = prediction_grid,
-                 aes(x = lon_bin, y = lat_bin, z = proportion),
-                 color = "white", alpha = 0.3) +
-    geom_point(
-      data = filter(prediction_grid, undersampled == TRUE),
-      aes(x = lon_bin_stipple, y = lat_bin_stipple),
-      color = "white", alpha = 0.6, size = 0.25, shape = 20
-    ) +
-    geom_sf(data = world, fill = "white", color = "white", inherit.aes = FALSE) +
-    coord_sf(expand = FALSE) +
-    labs(
-      title = paste("(", season_label, ")", sep=""),
-      x = "Longitude",
-      y = "Latitude",
-      fill = "Probability"
-    ) +
-    # Use the *common* scale
-    color_scale +  
-    guides(fill = suppress)+
-    theme_minimal()
-  
-  return(p)
-}
-
-
-# Make sure you have your 'world' sf object
-# e.g. world <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
-
-
-color_legend <- ggplot() +
-  geom_tile(data = data.frame(x = c(1), y = c(1), z = c(1)),
-            aes(x = x, y = y, fill = z)) +
-  subd_scale +
-  labs(fill = "Probability") +
-  theme_minimal() +
-  theme(legend.position = "bottom",
-        legend.key.width = unit(4, "cm"),
-        legend.key.height = unit(0.5, "cm"),
-        legend.text = element_text(size = 9),
-        legend.title = element_text(size = 11),
-        panel.background = element_blank(),
-        axis.text = element_blank(),
-        axis.ticks = element_blank(),
-        axis.title = element_blank())
-
-
-# Generate stippled maps for all seasons
-gam_map_with_stippling_djf <- create_stippled_map(
-  df_argo_clean, pred_djf_subd, months = c(12, 1, 2),
-  resolution = 5, threshold = 5, season_label = "DJF",
-  color_scale = subd_scale
-)
-
-gam_map_with_stippling_djf_with_legend <- create_stippled_map(
-  df_argo_clean, pred_djf_subd, months = c(12, 1, 2),
-  resolution = 5, threshold = 5, season_label = "DJF",
-  color_scale = subd_scale, suppress = "legend"
-)+labs(title = "Probability that a profile contains a subduction event (DJF)")
-
-ggsave(plot = gam_map_with_stippling_djf_with_legend,
-       filename = "figures/gam_map_with_stippling_djf_with_legend.png")
-
-gam_map_with_stippling_mam <- create_stippled_map(
-  df_argo_clean, pred_mam_subd, months = c(3, 4, 5),
-  resolution = 5, threshold = 5, season_label = "MAM",
-  color_scale = subd_scale
-)
-
-gam_map_with_stippling_jja <- create_stippled_map(
-  df_argo_clean, pred_jja_subd, months = c(6, 7, 8),
-  resolution = 5, threshold = 5, season_label = "JJA",
-  color_scale = subd_scale
-)
-
-gam_map_with_stippling_son <- create_stippled_map(
-  df_argo_clean, pred_son_subd, months = c(9, 10, 11),
-  resolution = 5, threshold = 5, season_label = "SON",
-  color_scale = subd_scale
-)
-
-# Combine maps into a 2x2 grid
-combined_stippling_maps <- (gam_map_with_stippling_djf + gam_map_with_stippling_mam) /
-  (gam_map_with_stippling_jja + gam_map_with_stippling_son)
-
-# Add the unified legend at the bottom
-final_plot <- combined_stippling_maps +
-  plot_layout(guides = "collect") &
-  plot_annotation(title = "Subduction Probability Across Seasons") &
-  theme(
-    plot.margin = margin(1, 1, 1, 1),
-    legend.position = "bottom",
-    legend.key.width = unit(2, "cm"),  # Make the legend wider
-    legend.key.height = unit(0.5, "cm"),  # Adjust height for clarity
-    legend.text = element_text(size = 8),
-    legend.text.position = "bottom", # Adjust font size
-    legend.title = element_text(size = 12)  # Adjust title size
-  )
-
-# save
-ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_combined_stippled.png",
-       final_plot, width = 7, height = 5)
-
-
-
-create_stippled_carbon_map <- function(df_argo_clean,
-                                       pred_grid,
-                                       months,
-                                       resolution = 5,
-                                       threshold = 5,
-                                       season_label = "DJF",
-                                       color_scale = carb_scale) {
-  # 1) Coarse bin Argo data (this is for identifying undersampling)
-  argo_bins <- df_argo_clean %>%
-    filter(lubridate::month(TIME) %in% months) %>%
-    mutate(
-      lon_bin_stipple = floor(LONGITUDE / resolution) * resolution,
-      lat_bin_stipple = floor(LATITUDE / resolution) * resolution
-    ) %>%
-    group_by(lon_bin_stipple, lat_bin_stipple) %>%
-    summarize(count = n(), .groups = "drop")
-  
-  # 2) Identify undersampled bins
-  undersampled <- argo_bins %>%
-    filter(count < threshold)
-  
-  # 3) Prepare the prediction grid for mapping
-  #    by matching it to the same stipple resolution
-  prediction_grid <- pred_grid %>%
-    mutate(
-      lon_bin_stipple = floor(lon_bin / resolution) * resolution,
-      lat_bin_stipple = floor(lat_bin / resolution) * resolution
-    ) %>%
-    left_join(undersampled, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
-    mutate(undersampled = ifelse(is.na(count), FALSE, TRUE))
-  
-  # 4) Plot
-  p <- ggplot() +
-    # Probability as tiles
-    geom_tile(data = prediction_grid,
-              aes(x = lon_bin, y = lat_bin, fill = proportion)) +
-    # Probability contours
-    geom_contour(data = prediction_grid,
-                 aes(x = lon_bin, y = lat_bin, z = proportion),
-                 color = "white", alpha = 0.3) +
-    # Stippling for undersampled bins
-    geom_point(
-      data = filter(prediction_grid, undersampled == TRUE),
-      aes(x = lon_bin_stipple, y = lat_bin_stipple),
-      color = "white", alpha = 0.6, size = 0.25, shape = 20
-    ) +
-    # World map for context
-    geom_sf(data = world, fill = "white", color = "white", inherit.aes = FALSE) +
-    coord_sf(expand = FALSE) +
-    labs(
-      title = paste("(", season_label, ")", sep = ""),
-      x = "Longitude",
-      y = "Latitude"
-    ) +
-    color_scale +
-    theme_minimal()
-  
-  return(p)
-}
-
-gam_map_carb_djf_stippled <- create_stippled_carbon_map(
-  df_argo_clean,
-  pred_djf_carb,
-  months = c(12,1,2),
-  resolution = 5,
-  threshold = 5,
-  season_label = "DJF",
-  color_scale = carb_scale
-)
-
-gam_map_carb_mam_stippled <- create_stippled_carbon_map(
-  df_argo_clean,
-  pred_mam_carb,
-  months = c(3,4,5),
-  resolution = 5,
-  threshold = 5,
-  season_label = "MAM",
-  color_scale = carb_scale
-)
-
-gam_map_carb_jja_stippled <- create_stippled_carbon_map(
-  df_argo_clean,
-  pred_jja_carb,
-  months = c(6,7,8),
-  resolution = 5,
-  threshold = 5,
-  season_label = "JJA",
-  color_scale = carb_scale
-)
-
-gam_map_carb_son_stippled <- create_stippled_carbon_map(
-  df_argo_clean,
-  pred_son_carb,
-  months = c(9,10,11),
-  resolution = 5,
-  threshold = 5,
-  season_label = "SON",
-  color_scale = carb_scale
-)
-
-color_legend_carb <- ggplot(data = data.frame(x = c(1), y = c(1), z = c(0.5))) +
-  geom_tile(aes(x = x, y = y, fill = z)) +
-  carb_scale +
-  labs(fill = "Probability") +
-  theme_minimal() +
-  theme(
-    legend.position = "bottom",
-    legend.key.width  = unit(2, "cm"),
-    legend.key.height = unit(0.4, "cm"),
-    axis.title        = element_blank(),
-    axis.text         = element_blank(),
-    axis.ticks        = element_blank(),
-    panel.grid        = element_blank()
-  )
-
-# 2×2 layout of the four seasonal maps
-combined_carb_maps <- (gam_map_carb_djf_stippled + gam_map_carb_mam_stippled) /
-  (gam_map_carb_jja_stippled + gam_map_carb_son_stippled)
-
-# Add a main title (optional)
-final_carb_plot <- combined_carb_maps +
-  plot_layout(guides = "collect") &
-  plot_annotation(title = "Carbon Subduction Probability Across Seasons") &
-  theme(
-    plot.margin = margin(1, 1, 1, 1),
-    legend.position = "bottom",
-    legend.key.width = unit(2, "cm"),  # Make the legend wider
-    legend.key.height = unit(0.5, "cm"),  # Adjust height for clarity
-    legend.text = element_text(size = 8),
-    legend.text.position = "bottom", # Adjust font size
-    legend.title = element_text(size = 12)  # Adjust title size
-  )
-
-
-ggsave("figures/TimeSpaceVar/4SEASONS/gam_carbon_subduction_stippled_4seasons.png",
-       final_carb_plot, width = 7, height = 5)
 
