@@ -33,6 +33,186 @@ df_argo_clean <- read_csv("data/df_argo_loc.csv")
 df_complete_clean <- read_csv("data/df_eddy_subduction_anom.csv")
 df_carbon_clean <- read_csv("data/df_carbon_subduction_anom.csv")
 
+
+# --- 1) Create WEEK and YEAR columns, then define bin edges ---
+df_argo_clean <- df_argo_clean %>%
+  mutate(
+    WEEK = week(TIME),
+    YEAR = year(TIME)
+  )
+
+bin_size <- 0.1  # ~10 km at mid-latitudes
+longitude_bins <- seq(
+  floor(min(df_argo_clean$LONGITUDE)),
+  ceiling(max(df_argo_clean$LONGITUDE)),
+  by = bin_size
+)
+latitude_bins <- seq(
+  floor(min(df_argo_clean$LATITUDE)),
+  ceiling(max(df_argo_clean$LATITUDE)),
+  by = bin_size
+)
+
+# Compute bin centers for labeling
+lon_centers <- longitude_bins[-length(longitude_bins)] + bin_size / 2
+lat_centers <- latitude_bins[-length(latitude_bins)] + bin_size / 2
+
+# --- 2) Assign each float to its bin ---
+df_argo_clean <- df_argo_clean %>%
+  mutate(
+    lon_bin = cut(
+      LONGITUDE,
+      breaks = longitude_bins,
+      include.lowest = TRUE,
+      labels = lon_centers
+    ),
+    lat_bin = cut(
+      LATITUDE,
+      breaks = latitude_bins,
+      include.lowest = TRUE,
+      labels = lat_centers
+    )
+  )
+
+# --- 3) Summarize Argo profiles by week, year, and bin ---
+df_argo_submeso <- df_argo_clean %>%
+  group_by(WEEK, YEAR, lon_bin, lat_bin) %>%
+  summarize(count_total = n(), .groups = 'drop')
+
+# --- 4) Filter for a particular week (e.g., Week 10 of 2024) ---
+df_argo_randomweek <- df_argo_submeso %>%
+  filter(WEEK == 10, YEAR == 2024) %>%
+  mutate(
+    lon_bin_num = as.numeric(as.character(lon_bin)),
+    lat_bin_num = as.numeric(as.character(lat_bin))
+  )
+
+# --- 5) Plot: red squares where there's at least one float in that bin ---
+world_map <- map_data("world")
+
+ggplot() +
+  # Draw world map polygons
+  geom_polygon(
+    data = world_map,
+    aes(x = long, y = lat, group = group),
+    fill = "grey80", 
+    color = "black"
+  ) + geom_tile(
+    data = df_argo_randomweek,
+    aes(x = lon_bin_num, y = lat_bin_num,fill=count_total),
+    alpha = 1
+  )+
+  # Fix aspect ratio and set lat/lon bounds if desired
+  coord_fixed(1.3, xlim = c(-180, 180), ylim = c(-90, 90)) +
+  # Overlay bins (squares) with Argo data
+  +
+  labs(
+    title = "Argo Float Distribution (Week 10, 2024) in ~10 km Bins",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal()
+
+
+
+df_argo_submeso$count_total %>% as_factor() %>% summary()
+ggplot() +
+  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
+  # Plot "not analyzed yet" points first (in black)
+  geom_sf(data = df_argo_black, 
+          aes(geometry = geometry), 
+          color = "black", 
+          alpha = 0.1, size = 2) +  labs(
+    title = "0.2 gridcell that have at least 1 profile",
+    subtitle = "Less than 15% of the Argo database has been analyzed for subduction signatures",
+    color = "Previous studies"
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    plot.title = element_text(face = "bold", size = 30, hjust = 0.5),
+    plot.subtitle = element_text(size = 25, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 20),
+    legend.text = element_text(size = 25),
+    panel.grid = element_blank()
+  )
+
+
+# Grid in 5 by 5 
+stipple_resolution <- 5
+# 1. Aggregate Argo float locations to 5° bins for the season
+argo_bins <- df_argo_clean %>%
+  mutate(
+    lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+    lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+  ) %>%
+  group_by(lon_bin_stipple, lat_bin_stipple) %>%
+  summarize(count = n(), .groups = "drop")
+
+full_grid <- expand.grid(
+  lon_bin_stipple = seq(-180, 180, by = 5),
+  lat_bin_stipple = seq(-90, 90, by = 5)
+) %>%
+  as_tibble()
+
+# Left join the existing argo_bins to the full grid and replace NAs with 0
+argo_bins_full <- full_grid %>%
+  left_join(argo_bins, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
+  mutate(count = ifelse(is.na(count), 0, count))
+
+
+# 2. Identify undersampled areas (e.g., fewer than 5 profiles)
+undersampled <- argo_bins_full %>% filter(count < 1)
+
+
+
+
+undersampled_corners <- undersampled %>%
+  rowwise() %>%
+  mutate(corners = list(
+    data.frame(
+      LON = c(lon_bin_stipple,
+              lon_bin_stipple + stipple_resolution,
+              lon_bin_stipple,
+              lon_bin_stipple + stipple_resolution),
+      LAT = c(lat_bin_stipple,
+              lat_bin_stipple,
+              lat_bin_stipple + stipple_resolution,
+              lat_bin_stipple + stipple_resolution)
+    )
+  )) %>%
+  ungroup() %>%
+  unnest(corners)
+
+
+
+
+argo_bins_full_sf <- argo_bins_full %>% filter(!is.na(lat_bin_stipple) & !is.na(lon_bin_stipple)) %>%
+  st_as_sf(coords = c("lon_bin_stipple", "lat_bin_stipple"), crs = 4326, remove = FALSE) %>%
+  st_transform(crs = "+proj=robin")
+
+ggplot() +
+  
+  # 1. Tile plot for yearly EKE background
+  geom_tile(data = argo_bins_full, 
+            aes(x = lon_bin_stipple, y = lat_bin_stipple, fill = count),
+            alpha = 0.95) +
+  scale_fill_viridis_c(
+    option = "viridis",  
+    name = "Number of Argo floats",
+    guide = guide_legend(reverse = TRUE, na.translate = FALSE)
+  ) +
+  # 4. Add stippling for undersampled cells
+  geom_point(data = undersampled_corners,
+             aes(x = LON, y = LAT),
+             color = "white", alpha = 0.6, size = 1.5, shape = 20) +
+  
+  # 5. Overlay the world map
+  geom_sf(data = world,
+          fill = "white", color = "white",
+          inherit.aes = TRUE)
+
+
 # Find distinct WMO values for floats in the Kuroshio extension (assumed region)
 kuroshio_floats <- df_argo_clean %>%
   filter(LONGITUDE >= 140, LONGITUDE <= 160,
@@ -48,7 +228,20 @@ southern_ocean_floats <- df_argo_clean %>%
 
 southern_ocean_floats
 
-df_argo_clean %>% filter(WMO == "2902295")
+
+
+
+df_subset_llort <- df_argo_clean %>%
+  # Filter by time: between 2012-01-01 and 2016-11-30
+  filter(TIME >= as.Date("2012-01-01"),
+         TIME <= as.Date("2016-11-30"),
+         # Keep profiles in the Southern Ocean: between 65°S and 30°S.
+         # Note: In the Southern Hemisphere, latitudes are negative.
+         LATITUDE >= -65,
+         LATITUDE <= -50)
+
+
+df_subset_llort %>% filter(WMO %in% g)
 
 # Define a lookup vector (names are the float numbers as strings)
 study_map <- c("5906511" = "Chen et al., 2021", # true value : 5904034
@@ -61,6 +254,10 @@ study_map <- c("5906511" = "Chen et al., 2021", # true value : 5904034
                "5904673" = "Chen & Schofield, 2024",
                "5906206" = "Chen & Schofield, 2024")
 
+# Artificial 
+new_entries <- setNames(rep("Llort et al., 2018", length(g)), g)
+
+study_map <- c(study_map, new_entries)
 # Now add a new column to df_argo_clean.
 # We first convert the WMO column to character (in case it's numeric)
 # and then check if it matches one of the keys in study_map.
@@ -71,9 +268,20 @@ df_argo_clean <- df_argo_clean %>%
 
 df_argo_clean$`Previous studies` %>% unique()
 
+df_argo_clean
+
 df_argo_sf <- df_argo_clean %>% filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
   st_transform(crs = "+proj=robin")
+
+df_complete_clean_sf <- df_complete_clean %>% filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
+  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
+  st_transform(crs = "+proj=robin")
+
+df_carbon_clean_sf <- df_carbon_clean %>% filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
+  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
+  st_transform(crs = "+proj=robin")
+
 
 # Split the data: one for "not analyzed yet" and one for all other studies
 df_argo_black <- df_argo_sf %>% filter(`Previous studies` == "not analyzed yet")
@@ -89,7 +297,7 @@ plot_argo_distrib <- ggplot() +
   # Then overlay points that have been analyzed, colored by the study
   geom_sf(data = df_argo_other, 
           aes(geometry = geometry, color = `Previous studies`), 
-          alpha = 0.9, size = 2) +
+          alpha = 0.8, size = 2) +
   # Define the color scale with custom labels (asterisk for Chen et al. and Lacour et al.)
   scale_color_manual(
     values = c("Chen et al., 2021"    = "red",
@@ -119,6 +327,59 @@ plot_argo_distrib <- ggplot() +
   )
 
 ggsave("figures/argo_distrib.png",plot = plot_argo_distrib,width = 20,height = 10,dpi = 300)
+
+plot_subduct_distrib <- ggplot() +
+  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
+  # Plot "not analyzed yet" points first (in black)
+  geom_sf(data = df_argo_sf, 
+          aes(geometry = geometry), 
+          color = "black", 
+          alpha = 0.1, size = 1) +
+  # Plot "manually verified" second (in blue)
+  geom_sf(data = df_complete_clean_sf, 
+          aes(geometry = geometry), 
+          color = "blue", 
+          alpha = 1, size = 2) +
+  labs(
+    title = "Subduction Anomalies Distribution: 4,390 Profiles",
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    plot.title = element_text(face = "bold", size = 30, hjust = 0.5),
+    plot.subtitle = element_text(size = 25, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 20),
+    legend.text = element_text(size = 25),
+    panel.grid = element_blank()
+  )
+
+ggsave("figures/subduct_distrib.png",plot = plot_subduct_distrib,width = 20,height = 10,dpi = 300)
+
+plot_carbon_distrib <- ggplot() +
+  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
+  geom_sf(data = df_argo_sf, 
+          aes(geometry = geometry), 
+          color = "black", 
+          alpha = 0.1, size = 1) +
+  # Plot "not analyzed yet" points first (in black)
+  geom_sf(data = df_carbon_clean_sf, 
+          aes(geometry = geometry), 
+          color = "red", 
+          alpha = 1, size = 2) +
+  labs(
+    title = "Carbon Subduction Anomalies Distribution: 1,333 Profiles",
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    plot.title = element_text(face = "bold", size = 30, hjust = 0.5),
+    plot.subtitle = element_text(size = 25, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 20),
+    legend.text = element_text(size = 25),
+    panel.grid = element_blank()
+  )
+
+ggsave("figures/carbon_distrib.png",plot = plot_carbon_distrib,width = 20,height = 10,dpi = 300)
 
 
 # Define months for the four distinct periods: DJF, MAM, JJA, SON
@@ -467,7 +728,18 @@ fit_gam_season <- function(merged_counts, k_value = 600,argo_min = 5) {
 
 create_prediction_grid <- function(merged_counts, step = 1) {
   lon_seq <- seq(min(merged_counts$lon_bin, na.rm = TRUE),
-                 max(merged_counts$lon_bin, na.rm = TRUE),
+                 max(merged  full_grid <- expand.grid(
+                   lon_bin_stipple = seq(-180, 175, by = 5),
+                   lat_bin_stipple = seq(-90, 90, by = 5)
+                 ) %>%
+                   as_tibble()
+                 
+                 # Left join the existing argo_bins to the full grid and replace NAs with 0
+                 argo_bins_full <- full_grid %>%
+                   left_join(argo_bins, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
+                   mutate(count = ifelse(is.na(count), 0, count))
+                 
+                 _counts$lon_bin, na.rm = TRUE),
                  by = step)
   lat_seq <- seq(min(merged_counts$lat_bin, na.rm = TRUE),
                  max(merged_counts$lat_bin, na.rm = TRUE),
@@ -631,9 +903,15 @@ map_subd_mam <- plot_gam_map(pred_mam_subd, world, "MAM", "Subduction", subd_sca
 map_subd_jja <- plot_gam_map(pred_jja_subd, world, "JJA", "Subduction", subd_scale,c(6:8))
 map_subd_son <- plot_gam_map(pred_son_subd, world, "SON", "Subduction", subd_scale,c(9:11))
 
+map_subd_full <- ggarrange(map_subd_full,
+                           common.legend = T,legend="bottom")
+
 
 combined_subd <- ggarrange(map_subd_djf,map_subd_mam,map_subd_jja,map_subd_son,ncol = 2,nrow=2,
           common.legend = T,legend="bottom")
+ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_discrete_yearly.png",
+       map_subd_full, width = 18, height = 10)
+
 
 ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_discrete_4seasons.png",
        combined_subd, width = 18, height = 10)
@@ -754,7 +1032,33 @@ compute_monthly_probabilities <- function(df_argo, df_events) {
 monthly_probs_subduction <- compute_monthly_probabilities(df_argo_clean, df_complete_clean)
 monthly_probs_carbon <- compute_monthly_probabilities(df_argo_clean, df_carbon_clean)
 
-# Step 3: Plot Monthly Histograms Faceted by Region
+monthly_probs_subduction$carbon <- "Subduction with/without carbon"
+monthly_probs_carbon$carbon <- "Subduction with carbon"
+
+montlhy_probs_binded <- bind_rows(monthly_probs_carbon,monthly_probs_subduction) %>%
+  filter(!is.na(region), !is.na(proportion), !is.na(month))  # Remove NA regions, proportions, and months %>%
+
+ggplot(montlhy_probs_binded, aes(x = month, y = proportion, fill = region)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black", alpha = 0.8) +
+  facet_wrap(region~carbon, ncol = 2,axes="all",scales = "free") +
+  scale_fill_viridis_d() +
+  labs(
+    title = title,
+    x = "Month",
+    y = "Probability of Subduction",
+    fill = "Region"
+  ) +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 15, face = "bold"),
+    axis.text.x = element_text(size = 15,angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 15),
+    axis.title.y = element_text(size = 16),
+    title = element_text(size=15)
+  )+  
+  guides(fill = "none")
+
+w# Step 3: Plot Monthly Histograms Faceted by Region
 plot_monthly_histograms <- function(monthly_probs, title) {
   monthly_probs <- monthly_probs %>%
     filter(!is.na(region), !is.na(proportion), !is.na(month))  # Remove NA regions, proportions, and months
@@ -880,6 +1184,17 @@ cyclic_lead <- function(x, n) {
   sapply(seq_along(x), function(i) x[((i - 1 + n) %% len) + 1])
 }
 
+cyclic_centered_deriv <- function(x) {
+  len <- length(x)
+  sapply(seq_along(x), function(i) {
+    # x_next: if i == len, then i %% len equals 0 so we get index 1.
+    x_next <- x[(i %% len) + 1]
+    # x_prev: for i == 1, (i - 2) %% len gives (-1 %% len) which in R returns (len - 1)
+    x_prev <- x[((i - 2) %% len) + 1]
+    (x_next - x_prev) / 2
+  })
+}
+
 merged_data <- merged_data %>%
   group_by(region) %>%
   arrange(MONTH) %>%
@@ -897,6 +1212,15 @@ merged_data <- merged_data %>%
     CHLA_lead11_mean = cyclic_lead(CHLA_mean, 11)
   ) %>%
   ungroup()
+
+
+merged_data <- merged_data %>%
+  group_by(region) %>%
+  arrange(MONTH) %>%
+  mutate(CHLA_rate = cyclic_centered_deriv(CHLA_mean)) %>%
+  ungroup()
+
+
 
 # Define candidate predictors (lag 0 is included as the “same month” values)
 predictors <- c("CHLA_mean", "CHLA_med",
@@ -918,13 +1242,13 @@ for (pred in predictors) {
   candidate_formulas[[model_label_add]] <- f_add
   model_names <- c(model_names, model_label_add)
   
-  # Interaction model formula
-  f_int <- as.formula(
-    paste("cbind(count_event, count_total - count_event) ~ region *", pred)
-  )
-  model_label_int <- paste(pred, "interaction", sep = "_")
-  candidate_formulas[[model_label_int]] <- f_int
-  model_names <- c(model_names, model_label_int)
+#  # Interaction model formula
+#  f_int <- as.formula(
+#    paste("cbind(count_event, count_total - count_event) ~ region *", pred)
+#  )
+#  model_label_int <- paste(pred, "interaction", sep = "_")
+#  candidate_formulas[[model_label_int]] <- f_int
+#  model_names <- c(model_names, model_label_int)
 }
 
 # Fit all candidate models and store them in a list
@@ -945,32 +1269,55 @@ print(sorted_aics)
 best_model <- models[["CHLA_lead2_mean_additive"]]
 summary(best_model)
 
+model_rate <- glm(cbind(count_event, count_total - count_event) ~ 
+                           region + CHLA_rate,
+                         data = merged_data,
+                         family = binomial(link = "logit"))
+
+summary(model_rate)
+
 model_interaction <- glm(cbind(count_event, count_total - count_event) ~ 
                            region * CHLA_lead2_mean,
                          data = merged_data,
                          family = binomial(link = "logit"))
-summary(model_interaction)
+
+
+null_model <- glm(cbind(count_event, count_total - count_event) ~ 
+                           region + CHLA_mean,
+                         data = merged_data,
+                         family = binomial(link = "logit"))
 
 
 null_model <- models[["CHLA_mean_additive"]]
 null_model %>% summary()
+
+library(lmtest)
+
+lrtest(null_model, best_model)
+
+model_rate <- glm(cbind(count_event, count_total - count_event) ~ 
+                           region + CHLA_mean,
+                         data = merged_data,
+                         family = binomial(link = "logit"))
+
+
+model_rate %>% summary()
 
 library(broom)
 library(dplyr)
 
 region_slopes <- merged_data %>%
   group_by(region) %>%
-  do(tidy(glm(cbind(count_event, count_total - count_event) ~ CHLA_lead2_mean,
+  do(tidy(glm(cbind(count_event, count_total - count_event) ~ CHLA_rate,
               data = .,
               family = binomial(link = "logit")))) %>%
-  filter(term == "CHLA_lead2_mean")
+  filter(term == "CHLA_rate")
 
 print(region_slopes)
 
-# Example usage:
-# Assuming monthly_probs_carbon and df_chloro_summary are already in your workspace:
+merged_data %>% select(region,month,CHLA_mean,CHLA_lead1_mean) %>% View()
 
-
+chloro_summary
 plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
   # Convert month to numeric if needed
   if(is.factor(monthly_probs$month) || is.ordered(monthly_probs$month)) {
@@ -986,8 +1333,9 @@ plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
   max_chloro <- max(c(max(merged_data$CHLA_mean, na.rm = TRUE),
                       max(merged_data$CHLA_lead2_mean, na.rm = TRUE)))
   scale_factor <- max(monthly_probs$proportion, na.rm = TRUE) / max_chloro
+  scale_factor_rate <- 3*scale_factor
   
-  # Filter out missing values
+  # Filter out missing values in monthly_probs
   monthly_probs <- monthly_probs %>%
     filter(!is.na(region), !is.na(proportion), !is.na(MONTH))
   
@@ -1006,15 +1354,29 @@ plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
     geom_point(data = merged_data,
                aes(x = MONTH, y = CHLA_mean * scale_factor, group = region),
                color = "darkblue",
-               size = 2) +
-    # Overlay chlorophyll 2 months later (CHLA_lead2_mean) as a red dashed line and points
-    geom_line(data = merged_data,
+               size = 2) +scale_x_continuous(
+                 breaks = 1:12,
+                 labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+               )+
+    # Overlay chlorophyll 2 months later (CHLA_lead2) as a red dashed line and points
+   geom_line(data = merged_data,
               aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
-              color = "red",
+              color = "pink",
               size = 1.2,
               linetype = "dashed") +
     geom_point(data = merged_data,
                aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+               color = "pink",
+               size = 2) +
+    # Overlay the cyclic centered derivative (rate) of chlorophyll as a green dotted line and points
+    geom_line(data = merged_data,
+              aes(x = MONTH, y = CHLA_rate * scale_factor_rate+0.01, group = region),
+              color = "red",
+              size = 1.2,
+              linetype = "dotted") +
+    geom_point(data = merged_data,
+               aes(x = MONTH, y = CHLA_rate * scale_factor_rate+0.01, group = region),
                color = "red",
                size = 2) +
     facet_wrap(~ region, ncol = 2) +
@@ -1040,11 +1402,12 @@ plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
 }
 
 # Example usage:
-both_realtime_and_lead2 <- plot_monthly_histograms(monthly_probs_carbon, df_chloro_summary, 
-                        "Monthly Probability of Carbon Subduction \nwith Seawifs Mean Chlorophyll\n(Real-time (blue) and 2 months later (red))")
+both_realtime_and_rate <- plot_monthly_histograms(monthly_probs_carbon, merged_data, 
+                        "Monthly Probability of Carbon Subduction \nwith Seawifs Mean Chlorophyll\n(Real-time (blue) and
+                       ,rate of accumulation (red)) and the chlorophyll value 2 months earlier (pink) ")
 
-ggsave(both_realtime_and_lead2,
-       filename = "figures/monthly_prob_carb_subd_chlorophyll_realtime_lead2.png",
+ggsave(both_realtime_and_rate,
+       filename = "figures/monthly_prob_carb_subd_chlorophyll_realtime_rate.png",
        width = 10,height = 8)
 
 plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
@@ -1082,7 +1445,11 @@ plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
     geom_point(data = merged_data,
                aes(x = MONTH, y = CHLA_mean * scale_factor, group = region),
                color = "darkblue",
-               size = 2) +
+               size = 2) +scale_x_continuous(
+                 breaks = 1:12,
+                 labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+               )+
   #  # Overlay chlorophyll 2 months later (CHLA_lead2_mean) as a red dashed line and points
   #  geom_line(data = merged_data,
   #            aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
@@ -1099,7 +1466,11 @@ plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
       title = title,
       x = "Month",
       y = "Probability of Subduction"
-    ) +
+    ) +scale_x_continuous(
+      breaks = 1:12,
+      labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    )+
     # Secondary axis for chlorophyll values (original units)
     scale_y_continuous(
       sec.axis = sec_axis(~ . / scale_factor, name = "Mean Chlorophyll")
@@ -1116,7 +1487,7 @@ plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
 }
 
 # Example usage:
-realtime_only <- plot_monthly_histograms(monthly_probs_carbon, df_chloro_summary, 
+realtime_only <- plot_monthly_histograms(monthly_probs_carbon, merged_data, 
                                                    "Monthly Probability of Carbon Subduction \nwith Seawifs Mean Chlorophyll\nReal-time (blue)")
 
 ggsave(realtime_only,
@@ -1152,11 +1523,11 @@ plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
              alpha = 0.8) +
       # Overlay chlorophyll 2 months later (CHLA_lead2_mean) as a red dashed line and points
       geom_line(data = merged_data,
-                aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+                aes(x = MONTH, y = CHLA_rate * scale_factor, group = region),
                 color = "darkblue",
                 size = 1.2) +
       geom_point(data = merged_data,
-                 aes(x = MONTH, y = CHLA_lead2_mean * scale_factor, group = region),
+                 aes(x = MONTH, y = CHLA_rate * scale_factor, group = region),
                  color = "darkblue",
                  size = 2) +
     facet_wrap(~ region, ncol = 2) +
@@ -1182,11 +1553,11 @@ plot_monthly_histograms <- function(monthly_probs, chloro_summary, title) {
 }
 
 # Example usage:
-lead2_only <- plot_monthly_histograms(monthly_probs_carbon, df_chloro_summary, 
-                                         "Monthly Probability of Carbon Subduction \nwith Seawifs Mean Chlorophyll\n Two months later (blue) ")
+rate_only <- plot_monthly_histograms(monthly_probs_carbon, df_chloro_summary, 
+                                         "Monthly Probability of Carbon Subduction \nwith Seawifs Mean Chlorophyll\n Rate of Accumulation (blue) ")
 
-ggsave(lead2_only,
-       filename = "figures/monthly_prob_carb_subd_chlorophyll_lead2.png",
+ggsave(rate_only,
+       filename = "figures/monthly_prob_carb_subd_chlorophyll_rate.png",
        width = 10,height = 8)
 
 

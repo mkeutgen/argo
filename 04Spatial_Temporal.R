@@ -38,73 +38,8 @@ df_complete_clean %>% head()
 df_argo_clean <- read_csv(file = "/data/GLOBARGO/src/data/df_argo_loc.csv")
 df_argo_clean %>% head()
 
-df_complete_clean
-df_argo_clean
-
-# so now that you've this dataframe of detected events, 
-# we are going to study the spatial and temporal variation of those 
-# subduction events of filaments of AOU and salinity,
-# most likely due to symmetric and MLI instabilities 
-# in the mixed layer of the ocean. Since those 3545 events are detected out 
-# of the much larger Argo Database, we begin by importing the Argo Database to
-# compute proportions of events out of total number of argo floats present in each 5*5 degree gridcell.
-# To do this, we have at our disposal df_argo with 126,591 rows, one row for each profile,
-# uniquely identified by float number (WMO) and TIME, LAT, LON, and CYCLE NUMBER# 
-
-# Load world map data and transform to Robinson projection
-world <- ne_countries(scale = "medium", returnclass = "sf")
-
-# Define new meridian
-meridian <- -180
-
-# Split world at new meridian
-wld.new <- st_break_antimeridian(world, lon_0 = meridian)
 
 
-wld.rob.sf <-  st_transform(wld.new, 
-                            paste("+proj=robin +lon_0=", meridian,
-                                  "+k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs") )
-
-
-
-
-# Convert data frames to spatial objects and transform to Robinson projection
-df_argo_sf <- df_argo_clean %>%
-  filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%  # Remove missing values
-  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
-  st_transform(crs = "+proj=robin")
-
-df_complete_sf <- df_complete_clean %>%
-  filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%  # Remove missing values
-  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
-  st_transform(crs = "+proj=robin")
-
-# Plot total Argo profiles
-map_total_argo_prof <- ggplot() +
-  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
-  geom_sf(data = df_argo_sf, aes(geometry = geometry), color = "blue", alpha = 0.1, size = 0.1) +
-  coord_sf(crs = "+proj=robin", datum = NA) +
-  labs(title = "125,836 Argo Profiles",
-       x = "Longitude",
-       y = "Latitude") +
-  theme_minimal() +
-  theme(panel.grid.major = element_line(color = "gray90")) +
-  annotation_north_arrow(location = "tl")
-
-ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/map_total_argo_prof.jpg",map_total_argo_prof)
-
-# Plot detected subduction events
-
-map_detected_events <- ggplot() +
-  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
-  geom_sf(data = df_complete_sf, aes(geometry = geometry), color = "red", alpha = 0.1, size = 0.1) +
-  coord_sf(crs = "+proj=robin", datum = NA) +
-  labs(title = "4,390 subduction anomalies",
-       x = "Longitude",
-       y = "Latitude") +
-  theme_minimal() +
-  theme(panel.grid.major = element_line(color = "gray90")) +
-  annotation_north_arrow(location = "tl")
 
 
 ggsave(filename = "/data/GLOBARGO/figures/TimeSpaceVar/map_detected_events.jpg",map_detected_events)

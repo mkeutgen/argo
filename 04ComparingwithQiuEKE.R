@@ -259,51 +259,8 @@ pred_grid <- pred_grid %>% na.omit()
 global_contour_breaks <- c(0.05, 0.10, 0.15, 0.20, 0.25)
 global_contour_labels <- as.character(round(global_contour_breaks * 100, 0))
 
-# ----- Compute undersampling from Argo data for the given year -----
-argo_bins_year <- df_argo_clean %>%
-  filter(year(TIME) == year_label) %>%
-  mutate(
-    lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
-  ) %>%
-  group_by(lon_bin_stipple, lat_bin_stipple) %>%
-  summarize(count = n(), .groups = "drop")
 
-undersampled <- argo_bins_year %>% 
-  filter(count < 5)
-
-undersampled_corners <- undersampled %>%
-  rowwise() %>%
-  mutate(corners = list(
-    data.frame(
-      LON = c(lon_bin_stipple,
-              lon_bin_stipple + stipple_resolution,
-              lon_bin_stipple,
-              lon_bin_stipple + stipple_resolution),
-      LAT = c(lat_bin_stipple,
-              lat_bin_stipple,
-              lat_bin_stipple + stipple_resolution,
-              lat_bin_stipple + stipple_resolution)
-    )
-  )) %>%
-  ungroup() %>%
-  unnest(corners)
-
-# ----- Prepare the prediction grid for probability of subduction (yearly) -----
-# (Assumes pred_carb_year exists with columns: lon_bin, lat_bin, proportion)
-prediction_grid_year <- pred_carb_year %>%
-  mutate(
-    lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
-    lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
-  ) %>%
-  left_join(argo_bins_year, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
-  mutate(undersampled = ifelse(is.na(count), FALSE, TRUE))
-
-# ----- Clean and prepare the EKE prediction grid (yearly) -----
-# (Assumes pred_grid contains the balanced EKE data with columns LON_num, LAT_num, and EKE_bl_hat_binned)
-pred_grid <- pred_grid %>% na.omit()
-
-# Build undersampled corners
+# 1. Aggregate Argo float locations to 5° bins for the season
 argo_bins <- df_argo_clean %>%
   mutate(
     lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
@@ -312,10 +269,24 @@ argo_bins <- df_argo_clean %>%
   group_by(lon_bin_stipple, lat_bin_stipple) %>%
   summarize(count = n(), .groups = "drop")
 
-# 2. Identify undersampled areas (e.g., fewer than 5 profiles)
-undersampled <- argo_bins %>% filter(count < 5)
+full_grid <- expand.grid(
+  lon_bin_stipple = seq(-180, 175, by = 5),
+  lat_bin_stipple = seq(-90, 90, by = 5)
+) %>%
+  as_tibble()
 
-# 3. Generate corner points for each undersampled cell (4 corners per cell)
+# Left join the existing argo_bins to the full grid and replace NAs with 0
+argo_bins_full <- full_grid %>%
+  left_join(argo_bins, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
+  mutate(count = ifelse(is.na(count), 0, count))
+
+
+# 2. Identify undersampled areas (e.g., fewer than 5 profiles)
+undersampled <- argo_bins_full %>% filter(count < 1)
+
+
+
+
 undersampled_corners <- undersampled %>%
   rowwise() %>%
   mutate(corners = list(
@@ -333,15 +304,59 @@ undersampled_corners <- undersampled %>%
   ungroup() %>%
   unnest(corners)
 
-ggplot()+geom_contour(data = pred_full_subd,
-             aes(x = lon_bin, y = lat_bin, z = proportion,
-                 color = factor(round(after_stat(level) * 100, 0))),
-             breaks = global_contour_breaks,
-             alpha = 1,
-             inherit.aes = FALSE,
-             show.legend = TRUE)
-
-# ----- Build the Plot -----
+# # ----- Prepare the prediction grid for probability of subduction (yearly) -----
+# # (Assumes pred_carb_year exists with columns: lon_bin, lat_bin, proportion)
+# prediction_grid_year <- pred_carb_year %>%
+#   mutate(
+#     lon_bin_stipple = floor(lon_bin / stipple_resolution) * stipple_resolution,
+#     lat_bin_stipple = floor(lat_bin / stipple_resolution) * stipple_resolution
+#   ) %>%
+#   left_join(argo_bins_year, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
+#   mutate(undersampled = ifelse(is.na(count), FALSE, TRUE))
+# 
+# # ----- Clean and prepare the EKE prediction grid (yearly) -----
+# # (Assumes pred_grid contains the balanced EKE data with columns LON_num, LAT_num, and EKE_bl_hat_binned)
+# pred_grid <- pred_grid %>% na.omit()
+# 
+# # Build undersampled corners
+# argo_bins <- df_argo_clean %>%
+#   mutate(
+#     lon_bin_stipple = floor(LONGITUDE / stipple_resolution) * stipple_resolution,
+#     lat_bin_stipple = floor(LATITUDE / stipple_resolution) * stipple_resolution
+#   ) %>%
+#   group_by(lon_bin_stipple, lat_bin_stipple) %>%
+#   summarize(count = n(), .groups = "drop")
+# 
+# # 2. Identify undersampled areas (e.g., fewer than 5 profiles)
+# undersampled <- argo_bins %>% filter(count < 5)
+# 
+# # 3. Generate corner points for each undersampled cell (4 corners per cell)
+# undersampled_corners <- undersampled %>%
+#   rowwise() %>%
+#   mutate(corners = list(
+#     data.frame(
+#       LON = c(lon_bin_stipple,
+#               lon_bin_stipple + stipple_resolution,
+#               lon_bin_stipple,
+#               lon_bin_stipple + stipple_resolution),
+#       LAT = c(lat_bin_stipple,
+#               lat_bin_stipple,
+#               lat_bin_stipple + stipple_resolution,
+#               lat_bin_stipple + stipple_resolution)
+#     )
+#   )) %>%
+#   ungroup() %>%
+#   unnest(corners)
+# 
+# ggplot()+geom_contour(data = pred_full_subd,
+#              aes(x = lon_bin, y = lat_bin, z = proportion,
+#                  color = factor(round(after_stat(level) * 100, 0))),
+#              breaks = global_contour_breaks,
+#              alpha = 1,
+#              inherit.aes = FALSE,
+#              show.legend = TRUE)
+# 
+# # ----- Build the Plot -----
 map_eke_bl <- ggplot() +
   
   # 1. Tile plot for yearly EKE background
@@ -350,7 +365,7 @@ map_eke_bl <- ggplot() +
             alpha = 0.95) +
   scale_fill_viridis_d(
     option = "viridis",  
-    name = "EKE (m²/s²)",
+    name = "Balanced EKE\n (m²/s²)",
     guide = guide_legend(reverse = TRUE, na.translate = FALSE)
   ) +
   # 2. Rectangles for polar regions (optional)
@@ -369,7 +384,7 @@ map_eke_bl <- ggplot() +
                show.legend = TRUE) +
   scale_color_brewer(
     palette = "Reds",
-    name = "Probability of subduction (%)",
+    name = "Probability of \nsubduction (%)",
     limits = global_contour_labels,
     breaks = global_contour_labels,
     labels = function(x) paste0(x, "%")
@@ -411,7 +426,7 @@ map_eke_unbl <-  ggplot() +
             alpha = 0.95) +
   scale_fill_viridis_d(
     option = "viridis",  
-    name = "EKE (m²/s²)",
+    name = "Unbalanced EKE\n (m²/s²)",
     guide = guide_legend(reverse = TRUE, na.translate = FALSE)
   ) +
   # 2. Rectangles for polar regions (optional)
@@ -430,7 +445,7 @@ map_eke_unbl <-  ggplot() +
                show.legend = TRUE) +
   scale_color_brewer(
     palette = "Reds",
-    name = "Probability of subduction (%)",
+    name = "Probability of \nsubduction (%)",
     limits = global_contour_labels,
     breaks = global_contour_labels,
     labels = function(x) paste0(x, "%")
@@ -463,8 +478,8 @@ map_eke_unbl <-  ggplot() +
 
 print(map_eke_unbl)
 
-ggsave(plot=map_eke_bl,filename = "figures/smoothed_map_eke_bl.png",width = 15,height = 10)
-ggsave(plot=map_eke_unbl,filename = "figures/smoothed_map_eke_unbl.png",width = 15,height = 10)
+ggsave(plot=map_eke_bl,filename = "figures/smoothed_map_eke_bl.png",width = 18,height = 10,dpi = 300)
+ggsave(plot=map_eke_unbl,filename = "figures/smoothed_map_eke_unbl.png",width = 15,height = 10,dpi = 300)
 
 ombined_discrete_eke_map <- (eke_balanced_map + map_subd_full) / (eke_unbalanced_map + map_subd_full)
 
