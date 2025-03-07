@@ -27,7 +27,7 @@ library(patchwork)
 library(gratia)
 
 # Read data to fit the gam
-df_full <- read_csv("dataframe_full_mld_and_n2.csv") 
+df_full <- read_csv("data/dataframe_full_mld_and_n2.csv") 
 
 # Standardize the log-transformed predictors
 df_full <- df_full %>%
@@ -36,6 +36,62 @@ df_full <- df_full %>%
     log_cleaned_N2_std = scale(log(cleaned_N2))
   )
 
+df_full$Anomaly <- df_full$Anomaly %>% as_factor()
+df_full$Anomaly_text <- ifelse(df_full$Anomaly == 1,"Yes","No")
+
+df_full$log
+# Density plot for Mixed Layer Depth (MLD)
+density_mld <- ggplot(df_full, aes(x = log_cleaned_mld, fill = factor(Anomaly_text))) +
+  geom_density(alpha = 0.4, color = "black", size = 1) +
+  labs(
+    title = "Probability Distribution of MLD",
+    x = "Log(Mixed Layer Depth)",
+    y = "Density",
+    fill = "Profile contains a subduction anomaly"
+  ) +
+  theme_bw(base_size = 25) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(face = "bold", size = 25, hjust = 0.5),
+    plot.subtitle = element_text(size = 15, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 25),
+    legend.text = element_text(size = 25)
+  )
+
+# Density plot for Brunt-Väisälä Frequency (N²)
+density_N2 <- ggplot(df_full, aes(x = log(cleaned_N2), fill = factor(Anomaly_text))) +
+  geom_density(alpha = 0.4, color = "black", size = 1) +
+  labs(
+    title = "Probability Distribution of N²",
+    x = "Log(Brunt–Väisälä Frequency)",
+    y = "Density",
+    fill = "Profile contains a subduction anomaly"
+  ) +
+  theme_bw(base_size = 25) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(face = "bold", size = 25, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 25),
+    legend.text = element_text(size = 25),
+  )
+
+t.test(df_full$cleaned_mld[df_full$Anomaly == 0],df_full$cleaned_mld[df_full$Anomaly == 1])
+# t = -15.139, df = 4537, p-value < 2.2e-16
+t.test(df_full$log_cleaned_N2[df_full$Anomaly == 0] ,df_full$log_cleaned_N2[df_full$Anomaly == 1])
+# t = 1.509, df = 4652.9, p-value = 0.1314 mean not diff
+
+# Combine the two plots side by side
+combined_density <- density_mld + density_N2 +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+ggsave("figures/density_mld_N2.png", combined_density, width = 20, height = 10, dpi = 300)
+
+#  N2 has a long right tail
 
 # MLD is significant (positive)
 m_mld <- glm(formula = Anomaly ~ log(cleaned_mld),
@@ -115,18 +171,37 @@ mld_effect <- ggplot(smooth_mld, aes(x = mld, y = prob)) +
     x = "Mixed Layer Depth (MLD)",
     y = "Predicted Probability"
   ) +
-  theme_minimal()+xlim(0,500)
+  theme_minimal()+scale_x_log10()+ theme_bw(base_size = 25) + theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(face = "bold", size = 25, hjust = 0.5),
+    plot.subtitle = element_text(size = 15, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 15),
+    legend.text = element_text(size = 15)
+  )
 
 
 n2_effect <- ggplot(smooth_n2, aes(x = N2, y = prob)) +
   geom_line(color = "red", size = 1) +
   geom_ribbon(aes(ymin = prob_lower, ymax = prob_upper), alpha = 0.2, fill = "red") +
   labs(
-    title = "Effect of Stratification (N²) on Subduction Probability over Likely Range of N2 (0 to 0.01)",
+    title = "Effect of N² on Subduction Probability",
     x = "Brunt-Väisälä Frequency (N²) log10 scale",
     y = "Predicted Probability"
   ) +
-  theme_minimal()+scale_x_log10()+xlim(0,0.01)
+  theme_minimal()+scale_x_log10(limits=c(1e-4,1e-2))+
+  # Switch to a theme that shows axes and ticks
+  theme_bw(base_size = 25) +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(face = "bold", size = 25, hjust = 0.5),
+    plot.subtitle = element_text(size = 15, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 15),
+    legend.text = element_text(size = 15)
+  )
 
 # Combine the two plots side by side
 combined_plot <- mld_effect + n2_effect + 
@@ -134,7 +209,7 @@ combined_plot <- mld_effect + n2_effect +
   theme(legend.position = "bottom")
 
 # Save the combined plot
-ggsave("/data/GLOBARGO/figures/GAM_combined_effects_plot.png", combined_plot, width = 12, height = 6, dpi = 300)
+ggsave("figures/GAM_combined_effects_plot.png", combined_plot, width = 20, height = 10, dpi = 300)
 
 m_gam %>% summary
 # R-sq.(adj) =  0.0103   Deviance explained = 2.53%, so clearly, not much if just using MLD and N2

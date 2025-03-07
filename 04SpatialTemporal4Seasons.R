@@ -228,6 +228,12 @@ southern_ocean_floats <- df_argo_clean %>%
 
 southern_ocean_floats
 
+# Load world map data and transform to Robinson projection
+world <- ne_countries(scale = "medium", returnclass = "sf")
+meridian <- -180
+wld.new <- st_break_antimeridian(world, lon_0 = meridian)
+
+wld.rob.sf <- st_transform(wld.new, paste("+proj=robin +lon_0=", meridian, "+k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"))
 
 
 
@@ -264,48 +270,47 @@ study_map <- c(study_map, new_entries)
 df_argo_clean <- df_argo_clean %>%
   mutate("Previous studies" = ifelse(as.character(WMO) %in% names(study_map),
                                      study_map[as.character(WMO)],
-                                     "not analyzed yet"))
+                                     "No subduction signatures detected"))
 
 df_argo_clean$`Previous studies` %>% unique()
 
-df_argo_clean
-
-df_argo_sf <- df_argo_clean %>% filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
-  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
-  st_transform(crs = "+proj=robin")
-
-df_complete_clean_sf <- df_complete_clean %>% filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
-  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
-  st_transform(crs = "+proj=robin")
-
-df_carbon_clean_sf <- df_carbon_clean %>% filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
-  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
-  st_transform(crs = "+proj=robin")
 
 
-# Split the data: one for "not analyzed yet" and one for all other studies
-df_argo_black <- df_argo_sf %>% filter(`Previous studies` == "not analyzed yet")
-df_argo_other <- df_argo_sf %>% filter(`Previous studies` != "not analyzed yet")
+
+# Split the data: one for "No subduction signatures detected" and one for all other studies
+df_argo_black <- df_argo_clean %>% filter(`Previous studies` == "No subduction signatures detected")
+df_argo_other <- df_argo_clean %>% filter(`Previous studies` != "No subduction signatures detected")
+
+ggplot() +
+  geom_sf(data = world, fill = "grey", color = "gray")+coord_sf()
+
+mapWorld <- borders("world",colour="gray70", fill="gray70") 
+ggplot() + mapWorld + coord_sf(xlim=c(-180, 180),ylim=c(-22,40))
+
+
+
 
 plot_argo_distrib <- ggplot() +
-  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
-  # Plot "not analyzed yet" points first (in black)
-  geom_sf(data = df_argo_black, 
-          aes(geometry = geometry), 
-          color = "black", 
-          alpha = 0.1, size = 2) +
-  # Then overlay points that have been analyzed, colored by the study
-  geom_sf(data = df_argo_other, 
-          aes(geometry = geometry, color = `Previous studies`), 
-          alpha = 0.8, size = 2) +
-  # Define the color scale with custom labels (asterisk for Chen et al. and Lacour et al.)
+  # Plot world using an sf object in geographic coordinates (EPSG:4326)
+  geom_sf(data = world, fill = "grey", color = "gray") +
+  # Plot "not analyzed yet" points in black
+  geom_point(data = df_argo_black, 
+             aes(x = LONGITUDE, y = LATITUDE, color = 'No subduction signatures detected'),
+             alpha = 0.1, size = 2) +
+  # Then overlay points that have been analyzed, colored by study
+  geom_point(data = df_argo_other, 
+             aes(x = LONGITUDE, y = LATITUDE, color = `Previous studies`),
+             alpha = 0.8, size = 2) +
+  # Define the color scale with custom labels
   scale_color_manual(
-    values = c("Chen et al., 2021"    = "red",
+    values = c("No subduction signatures detected" = "black",
+               "Chen et al., 2021"    = "red",
                "Llort et al., 2018"    = "blue",
                "Johnson & Omand, 2021" = "green",
                "Lacour et al., 2023"   = "purple",
                "Chen & Schofield, 2024" = "pink"),
-    labels = c("Chen et al., 2021" = "Chen et al., 2021*",
+    labels = c("No subduction signatures detected" = "No subduction signatures detected",
+               "Chen et al., 2021" = "Chen et al., 2021*",
                "Llort et al., 2018" = "Llort et al., 2018",
                "Johnson & Omand, 2021" = "Johnson & Omand, 2021",
                "Lacour et al., 2023" = "Lacour et al., 2023*",
@@ -314,69 +319,100 @@ plot_argo_distrib <- ggplot() +
   labs(
     title = "Argo Profile Distribution: 125,826 Profiles",
     subtitle = "Less than 15% of the Argo database has been analyzed for subduction signatures",
-    color = "Previous studies"
+    color = "Previous studies",
+    x = 'Longitude (°E)',y = 'Latitude (°N)'
   ) +
-  theme_minimal(base_size = 20) +
+  # Set the coordinate system to geographic and define the limits
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
+  # Define breaks every 30° and add degree symbols to the labels
+  scale_x_continuous(breaks = seq(-180, 180, 30), 
+                     labels = function(x) paste0(x, "°")) +
+  scale_y_continuous(breaks = seq(-90, 90, 30), 
+                     labels = function(x) paste0(x, "°")) +
+  # Switch to a theme that shows axes and ticks
+  theme_bw(base_size = 20) +
   theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0),
+    axis.ticks = element_line(color = "black"),
     plot.title = element_text(face = "bold", size = 30, hjust = 0.5),
     plot.subtitle = element_text(size = 25, hjust = 0.5),
     legend.position = "right",
     legend.title = element_text(face = "bold", size = 20),
-    legend.text = element_text(size = 25),
-    panel.grid = element_blank()
+    legend.text = element_text(size = 25)
   )
 
 ggsave("figures/argo_distrib.png",plot = plot_argo_distrib,width = 20,height = 10,dpi = 300)
 
 plot_subduct_distrib <- ggplot() +
-  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
+  geom_sf(data = world, fill = "grey", color = "gray") +
   # Plot "not analyzed yet" points first (in black)
-  geom_sf(data = df_argo_sf, 
-          aes(geometry = geometry), 
+  geom_point(data = df_argo_black, 
+          aes(x = LONGITUDE,y = LATITUDE), 
           color = "black", 
           alpha = 0.1, size = 1) +
   # Plot "manually verified" second (in blue)
-  geom_sf(data = df_complete_clean_sf, 
-          aes(geometry = geometry), 
+  geom_point(data = df_complete_clean, 
+          aes(x = LONGITUDE,y = LATITUDE), 
           color = "blue", 
-          alpha = 1, size = 2) +
+          alpha = 0.5, size = 1) +
   labs(
     title = "Subduction Anomalies Distribution: 4,390 Profiles",
+    x = 'Longitude (°E)',y = 'Latitude (°N)'
   ) +
-  theme_minimal(base_size = 20) +
+  # Set the coordinate system to geographic and define the limits
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
+  # Define breaks every 30° and add degree symbols to the labels
+  scale_x_continuous(breaks = seq(-180, 180, 30), 
+                     labels = function(x) paste0(x, "°")) +
+  scale_y_continuous(breaks = seq(-90, 90, 30), 
+                     labels = function(x) paste0(x, "°")) +
+  # Switch to a theme that shows axes and ticks
+  theme_bw(base_size = 20) +
   theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0),
+    axis.ticks = element_line(color = "black"),
     plot.title = element_text(face = "bold", size = 30, hjust = 0.5),
     plot.subtitle = element_text(size = 25, hjust = 0.5),
     legend.position = "right",
     legend.title = element_text(face = "bold", size = 20),
-    legend.text = element_text(size = 25),
-    panel.grid = element_blank()
+    legend.text = element_text(size = 25)
   )
 
 ggsave("figures/subduct_distrib.png",plot = plot_subduct_distrib,width = 20,height = 10,dpi = 300)
 
 plot_carbon_distrib <- ggplot() +
-  geom_sf(data = wld.rob.sf, fill = "grey", color = "gray") +
-  geom_sf(data = df_argo_sf, 
-          aes(geometry = geometry), 
-          color = "black", 
-          alpha = 0.1, size = 1) +
+  geom_sf(data = world, fill = "grey", color = "gray") +
   # Plot "not analyzed yet" points first (in black)
-  geom_sf(data = df_carbon_clean_sf, 
-          aes(geometry = geometry), 
-          color = "red", 
-          alpha = 1, size = 2) +
+  geom_point(data = df_argo_black, 
+             aes(x = LONGITUDE,y = LATITUDE), 
+             color = "black", 
+             alpha = 0.1, size = 1) +
+  # Plot "manually verified" second (in blue)
+  geom_point(data = df_carbon_clean, 
+             aes(x = LONGITUDE,y = LATITUDE), 
+             color = "red", 
+             alpha = 0.5, size = 1) +
   labs(
     title = "Carbon Subduction Anomalies Distribution: 1,333 Profiles",
+    x = 'Longitude (°E)',y = 'Latitude (°N)'
   ) +
-  theme_minimal(base_size = 20) +
+  # Set the coordinate system to geographic and define the limits
+  coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
+  # Define breaks every 30° and add degree symbols to the labels
+  scale_x_continuous(breaks = seq(-180, 180, 30), 
+                     labels = function(x) paste0(x, "°")) +
+  scale_y_continuous(breaks = seq(-90, 90, 30), 
+                     labels = function(x) paste0(x, "°")) +
+  # Switch to a theme that shows axes and ticks
+  theme_bw(base_size = 20) +
   theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0),
+    axis.ticks = element_line(color = "black"),
     plot.title = element_text(face = "bold", size = 30, hjust = 0.5),
     plot.subtitle = element_text(size = 25, hjust = 0.5),
     legend.position = "right",
     legend.title = element_text(face = "bold", size = 20),
-    legend.text = element_text(size = 25),
-    panel.grid = element_blank()
+    legend.text = element_text(size = 25)
   )
 
 ggsave("figures/carbon_distrib.png",plot = plot_carbon_distrib,width = 20,height = 10,dpi = 300)
@@ -428,12 +464,6 @@ df_argo_son_sf <- df_argo_son %>%
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE) %>%
   st_transform(crs = "+proj=robin")
 
-# Load world map data and transform to Robinson projection
-world <- ne_countries(scale = "medium", returnclass = "sf")
-meridian <- -180
-wld.new <- st_break_antimeridian(world, lon_0 = meridian)
-
-wld.rob.sf <- st_transform(wld.new, paste("+proj=robin +lon_0=", meridian, "+k=1 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"))
 
 # Function to plot Argo profiles for each season
 plot_argo_profiles <- function(df_sf, title, output_file) {
@@ -705,10 +735,10 @@ ggsave(filename = "figures/TimeSpaceVar/4SEASONS/combined_proportion_maps_carbon
 #
 # We specify k=600 or some other suitable value. Feel free to adjust.
 # We specify minimum Argo bin in the 5*5 gridcell to learn : 5
-fit_gam_season <- function(merged_counts, k_value = 600,argo_min = 5) {
+fit_gam_season <- function(merged_counts, k_value = 600,argo_min = 1) {
   # Filter out any invalid rows if necessary
   df <- merged_counts %>%
-    filter(!is.na(lon_bin), !is.na(lat_bin), count_total > argo_min)
+    filter(!is.na(lon_bin), !is.na(lat_bin))#, count_total > argo_min)
   
   gam_model <- gam(
     cbind(count_anomaly, count_total - count_anomaly) ~
@@ -728,19 +758,9 @@ fit_gam_season <- function(merged_counts, k_value = 600,argo_min = 5) {
 
 create_prediction_grid <- function(merged_counts, step = 1) {
   lon_seq <- seq(min(merged_counts$lon_bin, na.rm = TRUE),
-                 max(merged  full_grid <- expand.grid(
-                   lon_bin_stipple = seq(-180, 175, by = 5),
-                   lat_bin_stipple = seq(-90, 90, by = 5)
-                 ) %>%
-                   as_tibble()
+                 max(merged_counts$lon_bin, na.rm = TRUE))
                  
-                 # Left join the existing argo_bins to the full grid and replace NAs with 0
-                 argo_bins_full <- full_grid %>%
-                   left_join(argo_bins, by = c("lon_bin_stipple", "lat_bin_stipple")) %>%
-                   mutate(count = ifelse(is.na(count), 0, count))
-                 
-                 _counts$lon_bin, na.rm = TRUE),
-                 by = step)
+  
   lat_seq <- seq(min(merged_counts$lat_bin, na.rm = TRUE),
                  max(merged_counts$lat_bin, na.rm = TRUE),
                  by = step)
@@ -842,11 +862,11 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
       x = "Longitude", y = "Latitude"
     ) +
     common_scale +    # apply the discrete color scale
-    theme_minimal(base_size = 14) +  # Increased text size for readability
+    theme_minimal(base_size = 25) +  # Increased text size for readability
     theme(legend.position = 'top', 
-              legend.title = element_text(size = 12, face = "bold", margin = margin(r = 20)),  # Improve legend title
+              legend.title = element_text(size = 25, face = "bold", margin = margin(r = 100)),  # Improve legend title
               panel.grid = element_blank(),
-              legend.text = element_text(size = 10),  # Improve legend labels
+              legend.text = element_text(size = 20),  # Improve legend labels
               legend.direction = "horizontal", 
               legend.box = "horizontal",
               legend.key.height = unit(1,"lines"),
@@ -867,7 +887,7 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
 
 gam_full_subd <- fit_gam_season(merged_counts_full,  k_value = 600)
 # High k variant, k = 600 (originally it was 300)
-gam_djf_subd <- fit_gam_season(merged_counts_djf,  k_value = 600)
+gam_djf_subd <- fit_gam_season(merged_counts_djf,  k_value = 300)
 gam_mam_subd <- fit_gam_season(merged_counts_mam,  k_value = 600)
 gam_jja_subd <- fit_gam_season(merged_counts_jja,  k_value = 600)
 gam_son_subd <- fit_gam_season(merged_counts_son,  k_value = 600)
@@ -920,10 +940,10 @@ ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_discrete_4seasons.png",
 # 6) Build and Plot Carbon Subduction GAM for Each Season
 ###############################################################################
 
-gam_djf_carb <- fit_gam_season(merged_carbon_counts_djf,  k_value = 600)
-gam_mam_carb <- fit_gam_season(merged_carbon_counts_mam,  k_value = 600)
-gam_jja_carb <- fit_gam_season(merged_carbon_counts_jja,  k_value = 600)
-gam_son_carb <- fit_gam_season(merged_carbon_counts_son,  k_value = 600)
+gam_djf_carb <- fit_gam_season(merged_carbon_counts_djf,  k_value = 600,argo_min = 0)
+gam_mam_carb <- fit_gam_season(merged_carbon_counts_mam,  k_value = 600,argo_min = 0)
+gam_jja_carb <- fit_gam_season(merged_carbon_counts_jja,  k_value = 600,argo_min = 0)
+gam_son_carb <- fit_gam_season(merged_carbon_counts_son,  k_value = 600,argo_min = 0)
 
 # Predict
 pred_djf_carb <- predict_gam(gam_djf_carb, merged_carbon_counts_djf, step = 1)

@@ -97,8 +97,8 @@ argo_bins_full <- full_grid %>%
   mutate(
     count = ifelse(is.na(count), 0, count),
     count_bin = cut(count,
-                    breaks = c(-Inf, 1, 5, 25, 100,500, Inf),
-                    labels = c("0", "1-5", "5-25", "25-100", "100-500","500+")),
+                    breaks = c(-Inf, 1, 5,10, 25,100, Inf),
+                    labels = c("0", "1-5","5-10", "10-25", "25-100","100+")),
     # Compute center coordinates for geom_tile (tiles are centered at these points)
     lon_center = lon_bin_stipple + stipple_resolution / 2,
     lat_center = lat_bin_stipple + stipple_resolution / 2
@@ -128,7 +128,7 @@ map_1degree <- ggplot() +
   coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
   theme_minimal(base_size = 14) +
   theme(
-    legend.position = "right",
+    legend.position = "bottom",
     legend.title = element_text(size = 12, face = "bold"),
     legend.text = element_text(size = 10),
     panel.grid = element_blank()) +
