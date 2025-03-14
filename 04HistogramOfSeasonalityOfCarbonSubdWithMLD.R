@@ -30,6 +30,9 @@ conflict_prefer("filter", "dplyr")
 Sys.setlocale(category = "LC_ALL", locale = "en_US.UTF-8")
 
 df_argo_clean <- read_csv("data/df_argo_loc.csv")
+
+df_argo_clean <- df_argo_clean %>% distinct(WMO,TIME,.keep_all = TRUE)
+
 df_complete_clean <- read_csv("data/df_eddy_subduction_anom.csv")
 df_carbon_clean <- read_csv("data/df_carbon_subduction_anom.csv")
 
@@ -213,6 +216,8 @@ df_mld_merged <- left_join(
   by = c("WMO", "Time" = "TIME")
 ) %>% select(WMO,TIME,LATITUDE,LONGITUDE,MLD)
 
+
+
 df_N2_merged <- left_join(
   df_N2_summary,
   df_argo_clean_unique,
@@ -256,6 +261,77 @@ merged_data_with_mld <- merged_data %>%
 merged_data_full <- merged_data_with_mld %>% 
   inner_join(N2_summary, by = c("region", "MONTH")) %>%
   select(region,count_total,count_event,proportion,MONTH,CHLA_mean,MLD,N2)
+
+mld_plot <- merged_data_full %>%
+  group_by(region) %>% 
+  filter(region %in% c("North Atlantic", "Southern Ocean")) %>%
+  mutate(
+    prop_prop = proportion / sum(proportion),
+    prop_MLD = MLD / sum(MLD),
+    prop_CHLA = CHLA_mean / sum(CHLA_mean)
+  ) %>%
+  select(region, MONTH, prop_prop, prop_MLD, prop_CHLA) %>%
+  pivot_longer(cols = c("prop_prop", "prop_MLD", "prop_CHLA")) %>%
+  ggplot(aes(x = MONTH, y = value, color = name)) +
+  facet_wrap(. ~ region)  +
+  geom_bar(
+    data = ~ filter(.x, name == "prop_prop"),
+    stat = "identity",
+    position = "dodge",
+    alpha = 0.6,
+    color = NA
+  ) +
+  geom_line(
+    data = ~ filter(.x, name != "prop_prop"),
+    size = 2
+  ) +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_fill_manual(values = c("prop_prop" = "grey70", "prop_MLD" = NA, "prop_CHLA" = NA), guide = "none") +
+  scale_color_discrete(
+    breaks = c("prop_prop", "prop_MLD", "prop_CHLA"),
+    labels = c("Proportion of Events", "Mixed-layer Depth", "Chlorophyll-a")
+  ) +
+  theme_minimal(base_size = 25) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = "bottom") +
+  labs(x = "Month", y = "Density", color = "")
+
+n2_plot <- merged_data_full %>%
+  group_by(region) %>% 
+  filter(region %in% c("North Atlantic", "Southern Ocean")) %>%
+  mutate(
+    prop_prop = proportion / sum(proportion),
+    prop_N2 = N2 / sum(N2),
+    prop_CHLA = CHLA_mean / sum(CHLA_mean)
+  ) %>%
+  select(region, MONTH, prop_prop, prop_N2, prop_CHLA) %>%
+  pivot_longer(cols = c("prop_prop", "prop_N2", "prop_CHLA")) %>%
+  ggplot(aes(x = MONTH, y = value, color = name)) +
+  facet_wrap(. ~ region)  +
+  geom_bar(
+    data = ~ filter(.x, name == "prop_prop"),
+    stat = "identity",
+    position = "dodge",
+    alpha = 0.6,
+    color = NA
+  ) +
+  geom_line(
+    data = ~ filter(.x, name != "prop_prop"),
+    size = 2
+  ) +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_fill_manual(values = c("prop_prop" = "grey70", "prop_N2" = NA, "prop_CHLA" = NA), guide = "none") +
+  scale_color_discrete(
+    breaks = c("prop_prop", "prop_N2", "prop_CHLA"),
+    labels = c("Proportion of Events", "Brunt-Väisäla Frequency (N2)", "Chlorophyll-a")
+  ) +
+  theme_minimal(base_size = 25) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = "bottom") +
+  labs(x = "Month", y = "Density", color = "")
+
+
+ggsave(filename = "figures/n2plot_chla_prob_subd.png",n2_plot,width = 10,height = 10)
+
+ggsave(filename = "figures/mldplot_chla_prob_subd.png",mld_plot,width = 10,height = 10)
 
 
 df <- merged_data_full %>% group_by(region) %>%  mutate(MLD_norm = MLD/sum(MLD),

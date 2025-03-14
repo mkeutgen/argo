@@ -39,12 +39,110 @@ df_full <- df_full %>%
 df_full$Anomaly <- df_full$Anomaly %>% as_factor()
 df_full$Anomaly_text <- ifelse(df_full$Anomaly == 1,"Yes","No")
 
+
+ks.test(df_full$cleaned_mld[df_full$Anomaly ==1],
+        df_full$cleaned_mld[df_full$Anomaly ==0],alternative="less")
+
+ks.test(df_full$Max_N2[df_full$Anomaly ==1],
+        df_full$Max_N2[df_full$Anomaly ==0],alternative="greater")
+
+set.seed(124)       # for reproducibility
+B <- 10000          # number of bootstrap iterations
+n <- nrow(df_full) # total number of observations
+
+# Storage vectors for the KS statistics in each bootstrap iteration
+ks_mld <- numeric(B)
+ks_n2  <- numeric(B)
+
+# Original (observed) KS stats for reference:
+ks_mld_obs <- ks.test(
+  df_full$cleaned_mld[df_full$Anomaly == 1],
+  df_full$cleaned_mld[df_full$Anomaly == 0],
+  alternative = "less"
+)$statistic
+
+ks_n2_obs <- ks.test(
+  df_full$Max_N2[df_full$Anomaly == 1],
+  df_full$Max_N2[df_full$Anomaly == 0],
+  alternative = "greater"
+)$statistic
+
+# Bootstrap loop
+for (b in seq_len(B)) {
+  # 1. Resample row indices (with replacement)
+  idx_boot <- sample(seq_len(n), size = n, replace = TRUE)
+  df_boot  <- df_full[idx_boot, ]
+  
+  # 2. Subset MLD in sub vs. no-sub
+  sub_mld    <- df_boot$cleaned_mld[df_boot$Anomaly == 1]
+  no_sub_mld <- df_boot$cleaned_mld[df_boot$Anomaly == 0]
+  
+  # 3. Subset N2 in sub vs. no-sub
+  sub_n2    <- df_boot$Max_N2[df_boot$Anomaly == 1]
+  no_sub_n2 <- df_boot$Max_N2[df_boot$Anomaly == 0]
+  
+  # 4. Compute the KS statistics in this bootstrap sample
+  #    (We'll just use the default two-sided test for the *statistic*,
+  #     because we mainly care about the *value* of the KS distance.)
+  ks_mld[b] <- suppressWarnings(
+    ks.test(sub_mld, no_sub_mld)$statistic
+  )
+  ks_n2[b] <- suppressWarnings(
+    ks.test(sub_n2, no_sub_n2)$statistic
+  )
+}
+
+# -------------------------------------------
+# 5. Compare the distributions of ks_mld vs. ks_n2
+# -------------------------------------------
+
+bootstrapped <- tibble(ks_mld, ks_n2) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "Parameter",
+    values_to = "KS_Distance"
+  ) %>%
+  mutate(
+    Parameter = recode(
+      Parameter,
+      "ks_mld" = "Mixed-Layer Depth (MLD)",
+      "ks_n2"  = "Brunt-Väisälä Frequency (N²)"
+    )
+  ) %>%
+  ggplot() +
+  geom_density(aes(x = KS_Distance, fill = Parameter), alpha = 0.7) +
+  labs(
+    title = "Estimated Density of Simulated KS Distances",
+    x = "Bootstrapped Kolmogorov–Smirnov Distances",
+    y = "Density",
+    fill = NULL
+  ) + scale_fill_viridis_d(begin=0.5)+
+  theme_bw(base_size = 25) +
+  theme(
+    panel.border   = element_rect(color = "black", fill = NA, size = 0.5),
+    axis.ticks     = element_line(color = "black"),
+    plot.title     = element_text(face = "bold", size = 25, hjust = 0.5),
+    legend.position = "bottom",
+    legend.text    = element_text(size = 25)
+  )# For instance, compute the fraction of times that MLD's KS < N2's KS:
+
+ggsave("figures/bootstrapped_ks.png",bootstrapped,width = 15, height = 10, dpi = 300)
+
+mean(ks_mld < ks_n2)
+
+# Or look at the distribution of the difference (N2 minus MLD):
+ks_diff <- ks_n2 - ks_mld
+hist(ks_diff)
+# p-value that the difference is > 0 (i.e., N2 has a larger KS on average):
+p_value <- 1-mean(ks_diff > 0)
+
+
 df_full$log
 # Density plot for Mixed Layer Depth (MLD)
 density_mld <- ggplot(df_full, aes(x = log_cleaned_mld, fill = factor(Anomaly_text))) +
-  geom_density(alpha = 0.4, color = "black", size = 1) +
+  geom_density(alpha = 0.7, color = "black", size = 1) +
   labs(
-    title = "Probability Distribution of MLD",
+    title = "Estimated PDF of MLD",
     x = "Log(Mixed Layer Depth)",
     y = "Density",
     fill = "Profile contains a subduction anomaly"
@@ -58,13 +156,13 @@ density_mld <- ggplot(df_full, aes(x = log_cleaned_mld, fill = factor(Anomaly_te
     legend.position = "right",
     legend.title = element_text(face = "bold", size = 25),
     legend.text = element_text(size = 25)
-  )
+  )+ scale_fill_viridis_d(begin=0.5)
 
 # Density plot for Brunt-Väisälä Frequency (N²)
 density_N2 <- ggplot(df_full, aes(x = log(cleaned_N2), fill = factor(Anomaly_text))) +
-  geom_density(alpha = 0.4, color = "black", size = 1) +
+  geom_density(alpha = 0.7, color = "black", size = 1) +
   labs(
-    title = "Probability Distribution of N²",
+    title = "Estimated PDF of N²",
     x = "Log(Brunt–Väisälä Frequency)",
     y = "Density",
     fill = "Profile contains a subduction anomaly"
@@ -77,7 +175,7 @@ density_N2 <- ggplot(df_full, aes(x = log(cleaned_N2), fill = factor(Anomaly_tex
     legend.position = "right",
     legend.title = element_text(face = "bold", size = 25),
     legend.text = element_text(size = 25),
-  )
+  )+ scale_fill_viridis_d(begin=0.5)
 
 t.test(df_full$cleaned_mld[df_full$Anomaly == 0],df_full$cleaned_mld[df_full$Anomaly == 1])
 # t = -15.139, df = 4537, p-value < 2.2e-16
@@ -168,7 +266,7 @@ mld_effect <- ggplot(smooth_mld, aes(x = mld, y = prob)) +
   geom_ribbon(aes(ymin = prob_lower, ymax = prob_upper), alpha = 0.2, fill = "blue") +
   labs(
     title = "Effect of MLD on Subduction Probability",
-    x = "Mixed Layer Depth (MLD)",
+    x = "Mixed Layer Depth (m)",
     y = "Predicted Probability"
   ) +
   theme_minimal()+scale_x_log10()+ theme_bw(base_size = 25) + theme(
@@ -179,7 +277,7 @@ mld_effect <- ggplot(smooth_mld, aes(x = mld, y = prob)) +
     legend.position = "right",
     legend.title = element_text(face = "bold", size = 15),
     legend.text = element_text(size = 15)
-  )
+  )+geom_hline(yintercept = 0.5,show.legend = T)+scale_y_continuous(breaks = seq(0, 1, by = 0.1))
 
 
 n2_effect <- ggplot(smooth_n2, aes(x = N2, y = prob)) +
@@ -187,12 +285,12 @@ n2_effect <- ggplot(smooth_n2, aes(x = N2, y = prob)) +
   geom_ribbon(aes(ymin = prob_lower, ymax = prob_upper), alpha = 0.2, fill = "red") +
   labs(
     title = "Effect of N² on Subduction Probability",
-    x = "Brunt-Väisälä Frequency (N²) log10 scale",
+    x = "Brunt-Väisälä Frequency (N²) log10 scale (s⁻¹)",
     y = "Predicted Probability"
   ) +
   theme_minimal()+scale_x_log10(limits=c(1e-4,1e-2))+
   # Switch to a theme that shows axes and ticks
-  theme_bw(base_size = 25) +
+  theme_bw(base_size = 25) +scale_y_continuous(breaks = seq(0, 1, by = 0.1))+geom_hline(yintercept = 0.5)+
   theme(
     panel.border = element_rect(color = "black", fill = NA, size = 0.5),
     axis.ticks = element_line(color = "black"),

@@ -330,7 +330,7 @@ plot_argo_distrib <- ggplot() +
   scale_y_continuous(breaks = seq(-90, 90, 30), 
                      labels = function(x) paste0(x, "°")) +
   # Switch to a theme that shows axes and ticks
-  theme_bw(base_size = 20) +
+  theme_bw(base_size = 25) +
   theme(
     panel.border = element_rect(color = "black", fill = NA, size = 0),
     axis.ticks = element_line(color = "black"),
@@ -356,7 +356,7 @@ plot_subduct_distrib <- ggplot() +
           color = "blue", 
           alpha = 0.5, size = 1) +
   labs(
-    title = "Subduction Anomalies Distribution: 4,390 Profiles",
+    title = "Subduction Anomalies Distribution: 4,377 Profiles",
     x = 'Longitude (°E)',y = 'Latitude (°N)'
   ) +
   # Set the coordinate system to geographic and define the limits
@@ -367,7 +367,7 @@ plot_subduct_distrib <- ggplot() +
   scale_y_continuous(breaks = seq(-90, 90, 30), 
                      labels = function(x) paste0(x, "°")) +
   # Switch to a theme that shows axes and ticks
-  theme_bw(base_size = 20) +
+  theme_bw(base_size = 25) +
   theme(
     panel.border = element_rect(color = "black", fill = NA, size = 0),
     axis.ticks = element_line(color = "black"),
@@ -404,7 +404,7 @@ plot_carbon_distrib <- ggplot() +
   scale_y_continuous(breaks = seq(-90, 90, 30), 
                      labels = function(x) paste0(x, "°")) +
   # Switch to a theme that shows axes and ticks
-  theme_bw(base_size = 20) +
+  theme_bw(base_size = 25) +
   theme(
     panel.border = element_rect(color = "black", fill = NA, size = 0),
     axis.ticks = element_line(color = "black"),
@@ -735,10 +735,10 @@ ggsave(filename = "figures/TimeSpaceVar/4SEASONS/combined_proportion_maps_carbon
 #
 # We specify k=600 or some other suitable value. Feel free to adjust.
 # We specify minimum Argo bin in the 5*5 gridcell to learn : 5
-fit_gam_season <- function(merged_counts, k_value = 600,argo_min = 1) {
+fit_gam_season <- function(merged_counts, k_value = 600,argo_min = 0) {
   # Filter out any invalid rows if necessary
   df <- merged_counts %>%
-    filter(!is.na(lon_bin), !is.na(lat_bin))#, count_total > argo_min)
+    filter(!is.na(lon_bin), !is.na(lat_bin), count_total > argo_min)
   
   gam_model <- gam(
     cbind(count_anomaly, count_total - count_anomaly) ~
@@ -853,7 +853,7 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
     # Add stippling: plot four corner points per undersampled grid cell
     geom_point(data = undersampled_corners,
                aes(x = LON, y = LAT),
-               color = "white", alpha = 1, size = 0.5, shape = 20) +
+               color = "white", alpha = 1, size = 1, shape = 20) +
     # Add continents
     geom_sf(data = world_data, fill = "white", color = "white", inherit.aes = FALSE) +
     coord_sf(xlim = c(-180,180), ylim = c(-90,90), expand = FALSE, crs = st_crs(4326)) +
@@ -870,7 +870,7 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
               legend.direction = "horizontal", 
               legend.box = "horizontal",
               legend.key.height = unit(1,"lines"),
-              legend.key.width = unit(6,"lines"))+ 
+              legend.key.width = unit(8,"lines"))+ 
    guides(color = guide_legend(title.position = "top", 
                                     # hjust = 0.5 centres the title horizontally
                                     title.hjust = 0.5,
@@ -885,9 +885,9 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
 
 # Fit GAMs
 
-gam_full_subd <- fit_gam_season(merged_counts_full,  k_value = 600)
+gam_full_subd <- fit_gam_season(merged_counts_full,  k_value = 600,argo_min = 25)
 # High k variant, k = 600 (originally it was 300)
-gam_djf_subd <- fit_gam_season(merged_counts_djf,  k_value = 300)
+gam_djf_subd <- fit_gam_season(merged_counts_djf,  k_value = 600)
 gam_mam_subd <- fit_gam_season(merged_counts_mam,  k_value = 600)
 gam_jja_subd <- fit_gam_season(merged_counts_jja,  k_value = 600)
 gam_son_subd <- fit_gam_season(merged_counts_son,  k_value = 600)
@@ -934,18 +934,21 @@ ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_discrete_yearly.png",
 
 
 ggsave("figures/TimeSpaceVar/4SEASONS/gam_subduction_discrete_4seasons.png",
-       combined_subd, width = 18, height = 10)
+       combined_subd, width = 20, height = 15)
 
 ###############################################################################
 # 6) Build and Plot Carbon Subduction GAM for Each Season
 ###############################################################################
+gam_full_carb <- fit_gam_season(merged_carbon_counts_full,  k_value = 600,argo_min = 25)
 
-gam_djf_carb <- fit_gam_season(merged_carbon_counts_djf,  k_value = 600,argo_min = 0)
-gam_mam_carb <- fit_gam_season(merged_carbon_counts_mam,  k_value = 600,argo_min = 0)
-gam_jja_carb <- fit_gam_season(merged_carbon_counts_jja,  k_value = 600,argo_min = 0)
-gam_son_carb <- fit_gam_season(merged_carbon_counts_son,  k_value = 600,argo_min = 0)
+gam_djf_carb <- fit_gam_season(merged_carbon_counts_djf,  k_value = 600,argo_min = 5)
+gam_mam_carb <- fit_gam_season(merged_carbon_counts_mam,  k_value = 600,argo_min = 5)
+gam_jja_carb <- fit_gam_season(merged_carbon_counts_jja,  k_value = 600,argo_min = 5)
+gam_son_carb <- fit_gam_season(merged_carbon_counts_son,  k_value = 600,argo_min = 5)
 
 # Predict
+pred_full_carb <- predict_gam(gam_full_carb, merged_carbon_counts_full, step = 1)
+
 pred_djf_carb <- predict_gam(gam_djf_carb, merged_carbon_counts_djf, step = 1)
 pred_mam_carb <- predict_gam(gam_mam_carb, merged_carbon_counts_mam, step = 1)
 pred_jja_carb <- predict_gam(gam_jja_carb, merged_carbon_counts_jja, step = 1)
@@ -957,8 +960,16 @@ carb_values <- c(pred_djf_carb$proportion, pred_mam_carb$proportion,
 carb_min <- 0
 carb_max <- max(carb_values, na.rm = TRUE)
 
+carb_max_full <- max(pred_full_carb$proportion)
+carb_full_scale <- make_discrete_scale(0,0.20,binwidth = 0.025)
+
 # Discrete color scale for carbon subduction
 carb_scale <- make_discrete_scale(carb_min, carb_max, binwidth = 0.05)
+
+map_carb_full <- plot_gam_map(pred_full_carb,  world, "Whole Year", "Carbon Subduction", carb_scale,argo_months = c(1:12))
+map_carb_full <- ggarrange(map_carb_full,
+                           common.legend = T,legend="bottom")
+
 
 map_carb_djf <- plot_gam_map(pred_djf_carb, world, "DJF", "Carbon Subduction", carb_scale,c(12,1,2))
 map_carb_mam <- plot_gam_map(pred_mam_carb, world, "MAM", "Carbon Subduction", carb_scale,c(3:5))
@@ -968,8 +979,12 @@ map_carb_son <- plot_gam_map(pred_son_carb, world, "SON", "Carbon Subduction", c
 combined_carb <- ggarrange(map_carb_djf,map_carb_mam,map_carb_jja,map_carb_son,ncol = 2,nrow=2,
                            common.legend = T,legend="bottom")
 
+ggsave("figures/TimeSpaceVar/4SEASONS/gam_carbon_subduction_discrete_yearly.png",
+       map_carb_full, width = 18, height = 10)
+
+
 ggsave("figures/TimeSpaceVar/4SEASONS/gam_carbon_subduction_discrete_4seasons.png",
-       combined_carb, width = 18, height = 10)
+       combined_carb, width = 23, height = 15.3)
 
 
 # Summary:
@@ -1055,10 +1070,10 @@ monthly_probs_carbon <- compute_monthly_probabilities(df_argo_clean, df_carbon_c
 monthly_probs_subduction$carbon <- "Subduction with/without carbon"
 monthly_probs_carbon$carbon <- "Subduction with carbon"
 
-montlhy_probs_binded <- bind_rows(monthly_probs_carbon,monthly_probs_subduction) %>%
+monthly_probs_binded <- bind_rows(monthly_probs_carbon,monthly_probs_subduction) %>%
   filter(!is.na(region), !is.na(proportion), !is.na(month))  # Remove NA regions, proportions, and months %>%
 
-ggplot(montlhy_probs_binded, aes(x = month, y = proportion, fill = region)) +
+ggplot(monthly_probs_binded, aes(x = month, y = proportion, fill = region)) +
   geom_bar(stat = "identity", position = "dodge", color = "black", alpha = 0.8) +
   facet_wrap(region~carbon, ncol = 2,axes="all",scales = "free") +
   scale_fill_viridis_d() +
@@ -1078,7 +1093,7 @@ ggplot(montlhy_probs_binded, aes(x = month, y = proportion, fill = region)) +
   )+  
   guides(fill = "none")
 
-w# Step 3: Plot Monthly Histograms Faceted by Region
+# Step 3: Plot Monthly Histograms Faceted by Region
 plot_monthly_histograms <- function(monthly_probs, title) {
   monthly_probs <- monthly_probs %>%
     filter(!is.na(region), !is.na(proportion), !is.na(month))  # Remove NA regions, proportions, and months
@@ -1791,6 +1806,27 @@ carbon_pres_data$PRES_ADJUSTED <- carbon_pres_data$PRES_ADJUSTED-200
 #    return a data frame of x vs. PDF for each distribution.
 ##############################################################################
 
+# Southern Ocean, seasonality, for southern tropics as well.
+
+##############################################################################
+# 3) Fit the Exponential and Gamma distributions with fitdistrplus
+##############################################################################
+
+pres_data <- df_complete_clean %>% filter(!is.na(region), !is.na(month))
+pres_data$PRES_ADJUSTED <- pres_data$PRES_ADJUSTED-200
+
+
+carbon_pres_data <- df_carbon_clean %>% filter(!is.na(region), !is.na(month))
+carbon_pres_data$PRES_ADJUSTED <- carbon_pres_data$PRES_ADJUSTED-200
+##############################################################################
+# 3) Define a helper function to fit Exp, Gamma, LogNormal, Cauchy, and Power Law,
+#    and return a data frame of x vs. PDF for each distribution.
+##############################################################################
+data.x <- carbon_pres_data %>% filter(region == "Southern Ocean") %>% pull(PRES_ADJUSTED)
+
+m_pl = displ$new(data.x)
+m_ln = dislnorm$new(data.x)
+
 get_fitted_pdf_data <- function(sub_df, n_points = 500) {
   # sub_df is the subset for one region
   
@@ -1801,28 +1837,12 @@ get_fitted_pdf_data <- function(sub_df, n_points = 500) {
   fit_exp   <- fitdist(x_vals, "exp")
   fit_gamma <- fitdist(x_vals, "gamma")
   
-  # 3c) Fit Power Law using poweRlaw
-  #     NOTE: For a strict power-law fit, data must be positive and typically >= 1
-  #     If your data are smaller, consider shifting or ensuring no non-positive values.
-  pl_model <- displ$new(x_vals)
-  est_xmin <- estimate_xmin(pl_model)
-  pl_model$setXmin(est_xmin)
-  est_params <- estimate_pars(pl_model)
-  pl_model$setPars(est_params)
+  # 3c) Fit Log Normal via fitdistrplus
+  fit_lognormal <- fitdist(x_vals, "lnorm")
   
-  alpha_hat <- pl_model$getPars()
-  xmin_hat  <- pl_model$getXmin()
-  
-  # 3d) Define a function for the Power-law PDF
-  powerlaw_pdf <- function(x, alpha, xmin) {
-    # PDF is alpha * xmin^alpha * x^(-alpha - 1) for x >= xmin
-    # zero otherwise
-    ifelse(
-      x < xmin, 
-      0, 
-      alpha * xmin^alpha * x^(-alpha - 1)
-    )
-  }
+  # 3d) Fit Cauchy via fitdistrplus
+  fit_cauchy <- fitdist(x_vals, "cauchy",
+                        start = list(location = mean(x_vals), scale = stats::sd(x_vals)))
   
   # 3e) Create a sequence of x-values spanning the data range
   x_seq <- seq(
@@ -1832,34 +1852,62 @@ get_fitted_pdf_data <- function(sub_df, n_points = 500) {
   )
   
   # 3f) Compute PDFs from each fitted model
-  exp_density   <- dexp(x_seq, rate  = fit_exp$estimate["rate"])
-  gamma_density <- dgamma(
-    x_seq, 
-    shape = fit_gamma$estimate["shape"], 
-    rate  = fit_gamma$estimate["rate"]
-  )
-  pl_density    <- powerlaw_pdf(x_seq+200, alpha_hat, xmin_hat)
+  exp_density       <- dexp(x_seq, rate  = fit_exp$estimate["rate"])
+  gamma_density     <- dgamma(x_seq, shape = fit_gamma$estimate["shape"],
+                              rate  = fit_gamma$estimate["rate"])
+  lognormal_density <- dlnorm(x_seq, meanlog = fit_lognormal$estimate["meanlog"],
+                              sdlog = fit_lognormal$estimate["sdlog"])
+  cauchy_density    <- dcauchy(x_seq, location = fit_cauchy$estimate["location"],
+                               scale    = fit_cauchy$estimate["scale"])
   
-  # 3g) Return long-format data frame of x, distribution, density
-  out_df <- data.frame(
+  # 3g) Create a long-format data frame of x vs. PDF for each distribution
+  density_df <- data.frame(
     x = x_seq,
-    Exp   = exp_density,
-    Gamma = gamma_density,
-    PL    = pl_density
+    Exp       = exp_density,
+    Gamma     = gamma_density,
+    LogNormal = lognormal_density,
+    Cauchy    = cauchy_density
   ) %>%
     pivot_longer(
-      cols = c("Exp","Gamma","PL"),
+      cols = c("Exp", "Gamma", "LogNormal", "Cauchy"),
       names_to = "Distribution",
       values_to = "Density"
     )
   
-  # Optionally, store fit parameters as attributes or columns
-  # We'll store alpha, xmin in each row if you want to reference them
-  out_df$alpha_hat <- alpha_hat
-  out_df$xmin_hat  <- xmin_hat
+  # 3h) Compute GOF measures using gofstat() for each fitted model
+  gof_exp       <- gofstat(fit_exp)
+  gof_gamma     <- gofstat(fit_gamma)
+  gof_lognormal <- gofstat(fit_lognormal)
+  gof_cauchy    <- gofstat(fit_cauchy)
   
-  return(out_df)
+  gof_df <- data.frame(
+    Distribution = c("Exp", "Gamma", "LogNormal", "Cauchy"),
+    AIC = c(gof_exp$aic, gof_gamma$aic, gof_lognormal$aic, gof_cauchy$aic),
+    BIC = c(gof_exp$bic, gof_gamma$bic, gof_lognormal$bic, gof_cauchy$bic),
+    KS  = c(gof_exp$ks, gof_gamma$ks, gof_lognormal$ks, gof_cauchy$ks),
+    CvM = c(gof_exp$cvm, gof_gamma$cvm, gof_lognormal$cvm, gof_cauchy$cvm),
+    AD  = c(gof_exp$ad, gof_gamma$ad, gof_lognormal$ad, gof_cauchy$ad)
+  )
+  
+  # Return both the density data and GOF measures as a list
+  return(list(density_df = density_df, gof_df = gof_df))
 }
+
+# Here each region returns a list with two elements: density_df and gof_df
+fitted_list <- pres_data %>%
+  group_by(region) %>%
+  do(fit_out = get_fitted_pdf_data(.)[[1]])
+
+gof_list <- pres_data %>%
+  group_by(region) %>%
+  do(fit_out = get_fitted_pdf_data(.)[[2]])
+
+gof_list$fit_out[[1]]
+gof_list$fit_out[[2]]
+gof_list$fit_out[[3]]
+gof_list$fit_out[[4]]
+
+
 
 ##############################################################################
 # 4) Apply the fitting function by region, producing a data frame 
@@ -1867,7 +1915,7 @@ get_fitted_pdf_data <- function(sub_df, n_points = 500) {
 ##############################################################################
 fitted_df <- pres_data %>%
   group_by(region) %>%
-  do( get_fitted_pdf_data(.) )  # for each region, produce the PDF data
+  do( get_fitted_pdf_data(.)[[1]] )  # for each region, produce the PDF data
 
 # Make sure to keep region as a column (rather than a grouping var):
 fitted_df <- ungroup(fitted_df)
@@ -1879,33 +1927,35 @@ fitted_df <- ungroup(fitted_df)
 # If you prefer a kernel density plot for the raw data, replace geom_histogram 
 # with geom_density, but note that `bins = 30` applies to histograms, not densities.
 
+# Comparing statistical distributions
+x <- pres_data %>% filter(region == "Southern Ocean") %>% pull(PRES_ADJUSTED)
+
+
+
 distrib_subduction <- ggplot() +
-  # 5a) histogram of the original data, faceted by region
+  # 5a) Histogram of the original data, faceted by region
   geom_histogram(
     data = pres_data,
-    aes(x = PRES_ADJUSTED, y = ..density.. , fill = region),
+    aes(x = PRES_ADJUSTED, y = ..density.., fill = region),
     bins  = 30,
     color = "black",
-    fill = "white",
+    fill  = "white",
     alpha = 0.8
-  ) +geom_density(
-    data = pres_data,
-    aes(x = PRES_ADJUSTED,fill=region),
-    bins  = 30,
-    color = "black",
-    alpha = 0.8
-  )+
-  # 5b) overlaid lines from the fitted distributions
+  ) +
+  # 5b) Overlaid lines from the fitted distributions
   geom_line(
-    data = fitted_df,
+    data = fitted_df ,
     aes(x = x, y = Density, color = Distribution),
     size = 1
   ) +
-  # 5c) facet by region
+  # 5c) Facet by region
   facet_wrap(~ region, scales = "free_y") +
-  
-  # 5d) color scale and labeling
-  scale_color_manual(values = c("Exp"="red", "Gamma"="blue", "PL"="green")) +
+  # 5d) Color scale and labeling
+  scale_color_manual(values = c("Exp" = "red", 
+                                "Gamma" = "blue", 
+                                "LogNormal" = "orange", 
+                                "Cauchy" = "purple", 
+                                "PL" = "green")) +
   labs(
     title = "Fitted Distributions by Region",
     x     = "Pressure Adjusted",
@@ -1913,65 +1963,68 @@ distrib_subduction <- ggplot() +
   ) +
   theme_minimal() +
   theme(legend.title = element_blank()) +
-  # 5e) Example of customizing x-axis ticks:
+  # 5e) Customizing x-axis ticks
   scale_x_continuous(
     breaks = seq(0, 800, by = 200),
-    labels = seq(200,1000,by=200)
+    labels = seq(200, 1000, by = 200)
   )
+
 
 
 fitted_df <- carbon_pres_data %>%
   group_by(region) %>%
-  do( get_fitted_pdf_data(.) )  # for each region, produce the PDF data
+  do( get_fitted_pdf_data(.)[[1]] )  # for each region, produce the PDF data
 
 # Make sure to keep region as a column (rather than a grouping var):
 fitted_df <- ungroup(fitted_df)
 
+
+GOF_df <- carbon_pres_data %>%
+  group_by(region) %>%
+  do( get_fitted_pdf_data(.)[[2]] )
+
+GOF_df
 ##############################################################################
 # 6) Plot faceted by region: histogram (or density) + fitted curves
 ##############################################################################
 # We'll illustrate with a histogram, scaled to density on the y-axis.
 # If you prefer a kernel density plot for the raw data, replace geom_histogram 
 # with geom_density, but note that `bins = 30` applies to histograms, not densities.
-
 distrib_carbon_subduction <- ggplot() +
-  # 5a) histogram of the original data, faceted by region
+  # 5a) Histogram of the original data, faceted by region
   geom_histogram(
     data = carbon_pres_data,
-    aes(x = PRES_ADJUSTED, y = ..density.. , fill = region),
+    aes(x = PRES_ADJUSTED, y = ..density.., fill = region),
     bins  = 30,
     color = "black",
-    fill = "white",
+    fill  = "white",
     alpha = 0.8
-  ) +geom_density(
-    data = carbon_pres_data,
-    aes(x = PRES_ADJUSTED,fill=region),
-    bins  = 30,
-    color = "black",
-    alpha = 0.8
-  )+
-  # 5b) overlaid lines from the fitted distributions
+  ) +
+  # 5b) Overlaid lines from the fitted distributions
   geom_line(
     data = fitted_df,
     aes(x = x, y = Density, color = Distribution),
     size = 1
   ) +
-  # 5c) facet by region
+  # 5c) Facet by region
   facet_wrap(~ region, scales = "free_y") +
-  
-  # 5d) color scale and labeling
-  scale_color_manual(values = c("Exp"="red", "Gamma"="blue", "PL"="green")) +
+  # 5d) Color scale and labeling
+  scale_color_manual(values = c("Exp" = "red", 
+                                "Gamma" = "blue", 
+                                "LogNormal" = "orange", 
+                                "Cauchy" = "purple", 
+                                "PL" = "green")) +
   labs(
-    title = " Distributions of Depth of Carbon Subduction by Region",
+    title = "Fitted Distributions by Region",
     x     = "Pressure Adjusted",
     y     = "Density"
   ) +
   theme_minimal() +
   theme(legend.title = element_blank()) +
-  # 5e) Example of customizing x-axis ticks:
+  # 5e) Customizing x-axis ticks
   scale_x_continuous(
     breaks = seq(0, 800, by = 200),
-    labels = seq(200,1000,by=200)
+    labels = seq(200, 1000, by = 200)
   )
 
 

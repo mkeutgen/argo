@@ -64,13 +64,6 @@ df_eke <- df_eke %>%
 
 
 
-breaks_eke_bl <- c(1e-4,1e-3 ,2.5e-3,5e-3 ,7.5e-3,
-            1e-2,2.5e-2,5e-2,7.5e-2,1e-1,1)
-
-breaks_eke_unbl <- c(1e-4,1e-3 ,2e-3,3e-3 ,4e-3,5e-3,
-            6e-3,7e-3,8e-3,9e-3,1e-2,2.5e-2,1e-1)
-
-
 
 df_eke <- df_eke %>%
   mutate(
@@ -209,11 +202,10 @@ gam_unbl_gaussian_log <- gam(
 
 # Suppose we define a function to make a simple lat-lon grid:
 make_prediction_grid <- function(df, lon_step = 0.25, lat_step = 0.25) {
-  lon_seq <- seq(min(df$LON_num, na.rm = TRUE),
-                 max(df$LON_num, na.rm = TRUE),
+  lon_seq <- seq(-180,180,
                  by = lon_step)
-  lat_seq <- seq(min(df$LAT_num, na.rm = TRUE),
-                 max(df$LAT_num, na.rm = TRUE),
+  lat_seq <- seq(-90,
+                 90,
                  by = lat_step)
   expand.grid(LON_num = lon_seq, LAT_num = lat_seq)
 }
@@ -270,7 +262,7 @@ argo_bins <- df_argo_clean %>%
   summarize(count = n(), .groups = "drop")
 
 full_grid <- expand.grid(
-  lon_bin_stipple = seq(-180, 175, by = 5),
+  lon_bin_stipple = seq(-180, 180, by = 5),
   lat_bin_stipple = seq(-90, 90, by = 5)
 ) %>%
   as_tibble()
@@ -357,7 +349,56 @@ undersampled_corners <- undersampled %>%
 #              show.legend = TRUE)
 # 
 # # ----- Build the Plot -----
+# Manually defined labels for the balanced EKE legend.
+eke_labels_bl <- c(
+  "< 1e-4",
+  "(1e-4, 1e-3)",
+  "(1e-3, 2.5e-3)",
+  "(2.5e-3, 5e-3)",
+  "(5e-3, 7.5e-3)",
+  "(7.5e-3, 1e-2)",
+  "(1e-2, 2.5e-2)",
+  "(2.5e-2, 5e-2)",
+  "(5e-2, 7.5e-2)",
+  "(7.5e-2, 1e-1)",
+  "(1e-1, 1)"
+)
+
+# Manually defined labels for the unbalanced EKE legend.
+eke_labels_unbl <- c(
+  "< 1e-4",
+  "(1e-4, 1e-3)",
+  "(1e-3, 2e-3)",
+  "(2e-3, 3e-3)",
+  "(3e-3, 4e-3)",
+  "(4e-3, 5e-3)",
+  "(5e-3, 6e-3)",
+  "(6e-3, 7e-3)",
+  "(7e-3, 8e-3)",
+  "(8e-3, 9e-3)",
+  "(9e-3, 1e-2)",
+  "(1e-2, 2.5e-2)",
+  "(2.5e-2, 1e-1)"
+)
+
+# Define a common theme without panel borders
+common_theme <- theme_bw(base_size = 25) +
+  theme(
+    axis.ticks = element_line(color = "black"),
+    plot.title = element_text(face = "bold", size = 20, hjust = 0.5),
+    legend.position = "right",
+    legend.title = element_text(face = "bold", size = 20),
+    legend.text = element_text(size = 20),
+    panel.grid = element_blank(),
+    panel.border = element_blank()
+  )
+
 map_eke_bl <- ggplot() +
+  # 2. Rectangles for polar regions (optional)
+  geom_rect(aes(xmin = -180, xmax = 180, ymin = 50, ymax = 90),
+            fill = "lightblue", inherit.aes = FALSE) +
+  geom_rect(aes(xmin = -180, xmax = 180, ymin = -90, ymax = -60),
+            fill = "lightblue", inherit.aes = FALSE) +
   
   # 1. Tile plot for yearly EKE background
   geom_tile(data = pred_grid, 
@@ -366,20 +407,17 @@ map_eke_bl <- ggplot() +
   scale_fill_viridis_d(
     option = "viridis",  
     name = "Balanced EKE\n (m²/s²)",
-    guide = guide_legend(reverse = TRUE, na.translate = FALSE)
+    guide = guide_legend(reverse = TRUE, na.translate = FALSE),
+    labels=eke_labels_bl,
   ) +
-  # 2. Rectangles for polar regions (optional)
-  geom_rect(aes(xmin = -180, xmax = 180, ymin = 53, ymax = 90),
-            fill = "lightblue", inherit.aes = FALSE) +
-  geom_rect(aes(xmin = -180, xmax = 180, ymin = -90, ymax = -67),
-            fill = "lightblue", inherit.aes = FALSE) +
   # 3. Overlay probability of subduction contours in red
   new_scale_color() +
   geom_contour(data = pred_full_subd,
                aes(x = lon_bin, y = lat_bin, z = proportion,
                    color = factor(round(after_stat(level) * 100, 0))),
                breaks = global_contour_breaks,
-               alpha = 1,
+               alpha = 0.75,
+               linewidth = 1.5,
                inherit.aes = FALSE,
                show.legend = TRUE) +
   scale_color_brewer(
@@ -407,33 +445,35 @@ map_eke_bl <- ggplot() +
     x = "Longitude",
     y = "Latitude"
   ) +
-  theme_minimal(base_size = 14) +
+  theme_minimal(base_size = 25) +
   theme(
     legend.position = "right",
-    legend.title = element_text(size = 12, face = "bold"),
-    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
     panel.grid = element_blank()
   )
 
 # Display the plot
 print(map_eke_bl)
 # Unbalanced EKE Map
-map_eke_unbl <-  ggplot() +
+
+map_eke_unbl <- ggplot() +
+  # 2. Rectangles for polar regions (optional)
+  geom_rect(aes(xmin = -180, xmax = 180, ymin = 50, ymax = 90),
+            fill = "lightblue", inherit.aes = FALSE) +
+  geom_rect(aes(xmin = -180, xmax = 180, ymin = -90, ymax = -60),
+            fill = "lightblue", inherit.aes = FALSE) +
   
   # 1. Tile plot for yearly EKE background
   geom_tile(data = pred_grid, 
             aes(x = LON_num, y = LAT_num, fill = EKE_unbl_hat_binned),
-            alpha = 0.95) +
+            alpha = 0.75) +
   scale_fill_viridis_d(
     option = "viridis",  
     name = "Unbalanced EKE\n (m²/s²)",
-    guide = guide_legend(reverse = TRUE, na.translate = FALSE)
+    guide = guide_legend(reverse = TRUE, na.translate = FALSE),
+    labels=eke_labels_unbl,
   ) +
-  # 2. Rectangles for polar regions (optional)
-  geom_rect(aes(xmin = -180, xmax = 180, ymin = 53, ymax = 90),
-            fill = "lightblue", inherit.aes = FALSE) +
-  geom_rect(aes(xmin = -180, xmax = 180, ymin = -90, ymax = -67),
-            fill = "lightblue", inherit.aes = FALSE) +
   # 3. Overlay probability of subduction contours in red
   new_scale_color() +
   geom_contour(data = pred_full_subd,
@@ -441,6 +481,7 @@ map_eke_unbl <-  ggplot() +
                    color = factor(round(after_stat(level) * 100, 0))),
                breaks = global_contour_breaks,
                alpha = 1,
+               linewidth = 1.5,
                inherit.aes = FALSE,
                show.legend = TRUE) +
   scale_color_brewer(
@@ -464,22 +505,22 @@ map_eke_unbl <-  ggplot() +
   # 6. Coordinate system and labels
   coord_sf(xlim = c(-180, 180), ylim = c(-90, 90), expand = FALSE) +
   labs(
-    title = paste("Unbalanced Eddy Kinetic Energy & Eddy Subduction Probability"),
+    title = paste("Unbalanced Eddy Kinetic Energy & Subduction Probability"),
     x = "Longitude",
     y = "Latitude"
   ) +
-  theme_minimal(base_size = 14) +
+  theme_minimal(base_size = 25) +
   theme(
     legend.position = "right",
-    legend.title = element_text(size = 12, face = "bold"),
-    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 20),
     panel.grid = element_blank()
   )
 
-print(map_eke_unbl)
+
 
 ggsave(plot=map_eke_bl,filename = "figures/smoothed_map_eke_bl.png",width = 18,height = 10,dpi = 300)
-ggsave(plot=map_eke_unbl,filename = "figures/smoothed_map_eke_unbl.png",width = 15,height = 10,dpi = 300)
+ggsave(plot=map_eke_unbl,filename = "figures/smoothed_map_eke_unbl.png",width = 18,height = 10,dpi = 300)
 
 ombined_discrete_eke_map <- (eke_balanced_map + map_subd_full) / (eke_unbalanced_map + map_subd_full)
 
