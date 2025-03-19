@@ -1184,6 +1184,14 @@ print(seasonality_test_subduction)
 print("Carbon Subduction Seasonality Test:")
 print(seasonality_test_carbon)
 
+
+
+
+# Run the post hoc test on the North Atlantic data
+posthoc_results_carbon <- post_hoc_test_region(north_atlantic_carbon)
+print("Post hoc test results for Carbon Subduction (North Atlantic):")
+print(posthoc_results_carbon)
+
 ####################################################
 ##### SEASONALITY OF CARBON SUBDUCTION WITH CHLORO #
 ####################################################
