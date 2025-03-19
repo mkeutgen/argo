@@ -858,7 +858,7 @@ plot_gam_map <- function(pred_grid, world_data, season_label, event_label, commo
     geom_sf(data = world_data, fill = "white", color = "white", inherit.aes = FALSE) +
     coord_sf(xlim = c(-180,180), ylim = c(-90,90), expand = FALSE, crs = st_crs(4326)) +
     labs(
-      title = paste0("Estimated ", event_label, " Probability (", season_label, ")"),
+      title = paste0("Estimated ", event_label, " Probability ", season_label, ""),
       x = "Longitude", y = "Latitude"
     ) +
     common_scale +    # apply the discrete color scale
@@ -970,6 +970,18 @@ map_carb_full <- plot_gam_map(pred_full_carb,  world, "Whole Year", "Carbon Subd
 map_carb_full <- ggarrange(map_carb_full,
                            common.legend = T,legend="bottom")
 
+map_subd_full <- plot_gam_map(pred_full_subd,  world, "", "Subduction", subd_scale,argo_months = c(1:12))
+
+map_carb_full_subd_scale <- plot_gam_map(pred_full_carb,  world, "", "Carbon Subduction", subd_scale,argo_months = c(1:12))
+
+map_combined <- ggarrange(map_carb_full_subd_scale,map_subd_full,
+                           common.legend = T,legend="bottom")
+
+ggsave(plot = map_combined,
+       filename = "figures/TimeSpaceVar/4SEASONS/gam_combined_discrete_yearly.png",
+       width = 23,height = 8)
+
+map_carb_subd_full <- ggarrange(map_subd_full,map_carb_full_subd_scale,common.legend = TRUE)
 
 map_carb_djf <- plot_gam_map(pred_djf_carb, world, "DJF", "Carbon Subduction", carb_scale,c(12,1,2))
 map_carb_mam <- plot_gam_map(pred_mam_carb, world, "MAM", "Carbon Subduction", carb_scale,c(3:5))

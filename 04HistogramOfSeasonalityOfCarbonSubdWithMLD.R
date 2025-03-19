@@ -290,7 +290,7 @@ mld_plot <- merged_data_full %>%
   scale_color_discrete(
     breaks = c("prop_prop", "prop_MLD", "prop_CHLA"),
     labels = c("Proportion of Events", "Mixed-layer Depth", "Chlorophyll-a")
-  ) +
+  ) + scale_color_viridis_d()+
   theme_minimal(base_size = 25) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = "bottom") +
   labs(x = "Month", y = "Density", color = "")
@@ -323,7 +323,7 @@ n2_plot <- merged_data_full %>%
   scale_color_discrete(
     breaks = c("prop_prop", "prop_N2", "prop_CHLA"),
     labels = c("Proportion of Events", "Brunt-Väisäla Frequency (N2)", "Chlorophyll-a")
-  ) +
+  ) + scale_color_viridis_d()+
   theme_minimal(base_size = 25) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),legend.position = "bottom") +
   labs(x = "Month", y = "Density", color = "")
