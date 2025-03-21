@@ -2022,26 +2022,133 @@ GOF_df
 # We'll illustrate with a histogram, scaled to density on the y-axis.
 # If you prefer a kernel density plot for the raw data, replace geom_histogram 
 # with geom_density, but note that `bins = 30` applies to histograms, not densities.
-carbon_pres_data$region <- carbon_pres_data$region %>% as_factor(levels="")
+carbon_pres_data$region
 
 distrib_carbon_subduction <- ggplot() +
   # 5a) Histogram of the original data, faceted by region
   geom_histogram(
     data = carbon_pres_data,
-    aes(x = PRES_ADJUSTED, fill = region),
+    aes(x = PRES_ADJUSTED, fill = region), #y=..density.. for density
     bins  = 30,
     color = "black",
     alpha = 0.8
   ) + scale_fill_viridis_d()+
-  facet_wrap(~ region, scales = "free_y") +
+  facet_wrap(~ region, scales = "free_y",ncol = 2,axes = "all_x") +
   theme_minimal() +
   theme(legend.title = element_blank()) +
   # 5e) Customizing x-axis ticks
   scale_x_continuous(
     breaks = seq(0, 800, by = 200),
     labels = seq(200, 1000, by = 200)
-  )
+  )+ 
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 15, face = "bold"),
+    axis.text.x = element_text(size = 15,angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 15),
+    axis.title.y = element_text(size = 16),
+    title = element_text(size=15)
+  )+  
+  guides(fill = "none")
 
+
+
+
+ggsave("figures/distrib_carbon_subd.png",distrib_carbon_subduction,width = 10,height = 8)
+
+
+distrib_subd_histogram <- ggplot() +
+  # 5a) Histogram of the original data, faceted by region
+  geom_histogram(
+    data = pres_data,
+    aes(x = PRES_ADJUSTED, fill = region),
+    bins  = 30,
+    color = "black",
+    alpha = 0.8
+  ) + scale_fill_viridis_d()+
+  facet_wrap(~ region, scales = "free_y",ncol = 2,axes = "all_x") +
+  theme_minimal() +
+  theme(legend.title = element_blank()) +
+  # 5e) Customizing x-axis ticks
+  scale_x_continuous(
+    breaks = seq(0, 800, by = 200),
+    labels = seq(200, 1000, by = 200)
+  )+ 
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 15, face = "bold"),
+    axis.text.x = element_text(size = 15,angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 15),
+    axis.title.y = element_text(size = 16),
+    title = element_text(size=15)
+  )+  
+  guides(fill = "none")
+
+
+pres_data$Type <- "Subduction"
+carbon_pres_data$Type <- "Carbon Subduction"
+# Combine data and create a new variable to distinguish datasets
+combined_data <- bind_rows(
+  pres_data %>% mutate(Type = "Subduction Events"),
+  carbon_pres_data %>% mutate(Type = "Carbon Subduction Events")
+)
+
+# Plot overlaid density plots
+subd_distrib_plot <- ggplot(combined_data, aes(x = PRES_ADJUSTED, fill = Type,color = Type)) +
+  geom_density(alpha = 0.3, linewidth = 1.2) +
+  scale_color_viridis_d() +
+  scale_fill_viridis_d() +
+  facet_wrap(. ~ region, scales = "free_y", ncol = 2,axes="all_x") +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 15, face = "bold"),
+    axis.text.x = element_text(size = 15, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 15),
+    axis.title = element_text(size = 16),
+    legend.title = element_blank(),
+    legend.text = element_text(size = 15)
+  ) +
+  labs(
+    x = "Depth (m)",
+    y = "Estimated Density",
+    title = "Carbon subduction happens mostly between 200 and 500 meters"
+  )+  scale_x_continuous(
+    breaks = seq(0, 800, by = 200),
+    labels = seq(200, 1000, by = 200)
+  )+ 
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 15, face = "bold"),
+    axis.text.x = element_text(size = 15,angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 15),
+    axis.title.y = element_text(size = 16),
+    title = element_text(size=15),
+    legend.position = "bottom"
+  )+  
+  guides(fill = "none")
+
+
+
+
+ggsave(filename = "figures/subd_distrib_plot.png",plot = subd_distrib_plot,width = 10,height = 10)
+
+# Compute proportion of events with PRES_ADJUSTED >= 300
+proportions_df <- combined_data %>%
+  group_by(Type, region) %>%
+  summarize(
+    total_events = n(),
+    events_geq_300 = sum(PRES_ADJUSTED >= 300),
+    proportion = events_geq_300 / total_events
+  ) %>%
+  arrange(region, Type)
+
+# Display the results
+print(proportions_df %>% filter(Type == "Carbon Subduction Events"))
+
+
+
+
+ggsave("figures/distrib_subd_histogram.png",distrib_subd_histogram,width = 10,height = 8)
 
 
 #  save the figure
@@ -2067,7 +2174,16 @@ carbon_pres_data %>%
     y = "Empirical Cumulative Probability",
     color = "Region"
   ) +
-  theme_minimal(base_size = 16) + scale_color_viri
+  theme_minimal(base_size = 16) +  +
+  theme_minimal() +
+  theme(
+    strip.text = element_text(size = 15, face = "bold"),
+    axis.text.x = element_text(size = 15,angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 15),
+    axis.title.y = element_text(size = 16),
+    title = element_text(size=15)
+  )+  
+  guides(fill = "none")
 
 
 
