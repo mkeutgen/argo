@@ -262,6 +262,98 @@ merged_data_full <- merged_data_with_mld %>%
   inner_join(N2_summary, by = c("region", "MONTH")) %>%
   select(region,count_total,count_event,proportion,MONTH,CHLA_mean,MLD,N2)
 
+
+# Assume your dataset is named 'merged_data_full'
+# and contains the columns: region, MONTH, proportion, CHLA_mean, and MLD.
+df <- merged_data_full %>% 
+  filter(region %in% c("North Atlantic", "Southern Ocean")) %>%
+  select(region, MONTH, proportion, CHLA_mean, MLD)
+
+
+### Plot 1: MLD & Proportion
+# Rescale MLD so that its typical values (~100) become similar to the proportion (~0.01)
+df_mld <- df %>% 
+  mutate(MLD_scaled = MLD * 0.0001)  # e.g. 100 becomes 0.01
+
+### Plot 1: MLD & Proportion
+df_mld <- df %>% 
+  mutate(MLD_scaled = MLD * 0.0001)  # Rescale MLD (~100 becomes ~0.01)
+
+p_mld <- ggplot(df_mld, aes(x = MONTH)) +
+  # Bar plot for proportion using fill mapped to region (viridis colors)
+  geom_bar(aes(y = proportion, fill = region), 
+           stat = "identity", 
+           position = position_dodge(width = 0.9), 
+           alpha = 0.6,
+           color = "black") +
+  # Line plot for MLD with a fixed line color (different from bar colors)
+  geom_line(aes(y = MLD_scaled, group = region), 
+            color = "darkblue", size = 2) +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_fill_viridis_d() +
+  scale_y_continuous(
+    name = "Proportion",
+    limits = c(0, 0.05),
+    sec.axis = sec_axis(~ . / 0.0001, name = "Mixed-layer Depth (m)")
+  ) +
+  facet_wrap(~ region, ncol = 1) +
+  labs(title = "", x = "Month") +
+  theme_minimal(base_size = 20) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    # Color secondary y-axis to match the line color
+    axis.text.y.right = element_text(color = "darkblue"),
+    axis.title.y.right = element_text(color = "darkblue")
+  )
+
+### Plot 2: CHLA & Proportion
+df_chla <- df %>% 
+  mutate(CHLA_scaled = CHLA_mean * 0.1)  # Rescale CHLA (~0.1 becomes ~0.01)
+
+p_chla <- ggplot(df_chla, aes(x = MONTH)) +
+  # Bar plot for proportion using fill mapped to region
+  geom_bar(aes(y = proportion, fill = region), 
+           stat = "identity", 
+           position = position_dodge(width = 0.9), 
+           alpha = 0.6,
+           color = "black") +
+  # Line plot for CHLA with a fixed line color distinct from the bar colors
+  geom_line(aes(y = CHLA_scaled, group = region), 
+            color = "#009E73", size = 2) +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  scale_fill_viridis_d() +
+  scale_y_continuous(
+    name = "Proportion",
+    limits = c(0, 0.05),
+    sec.axis = sec_axis(~ . / 0.1, name = "Chlorophyll-a (mg m⁻³)")
+  ) +
+  facet_wrap(~ region, ncol = 1) +
+  labs(title = "", x = "Month") +
+  theme_minimal(base_size = 20) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    # Color secondary y-axis to match the line color
+    axis.text.y.right = element_text(color = "#009E73"),
+    axis.title.y.right = element_text(color = "#009E73")
+  )
+
+### Combine the Two Plots Side by Side with a Common Title
+
+
+combined_plot <- ggarrange(p_mld, p_chla,legend = "none")
+annotated_plot <- annotate_figure(
+  combined_plot,
+  top = text_grob("Carbon subduction peaks at intermediary periods, between the peak in MLD and the peak in chlorophyll", 
+                   size = 20)
+)
+ggsave("figures/carbon_subd_mld_chloro.png",annotated_plot,width = 15,height = 10)
+
+
+
 mld_plot <- merged_data_full %>%
   group_by(region) %>% 
   filter(region %in% c("North Atlantic", "Southern Ocean")) %>%

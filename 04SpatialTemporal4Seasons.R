@@ -1806,10 +1806,22 @@ seasonality_carbon_test_depth <- df_carbon_clean %>%
 print("Seasonality Test for Subduction Depth (Kruskal-Wallis):")
 print(seasonality_test_depth)
 print(seasonality_carbon_test_depth)
+anova_model <- aov(PRES_ADJUSTED ~ month, data = df_carbon_clean %>% filter(region == "Southern Ocean"))
+summary(anova_model)
 
+m <- lm(PRES_ADJUSTED ~ factor(month,ordered = FALSE), data = df_carbon_clean %>% filter(region == "Southern Ocean"))
+m <- lm(PRES_ADJUSTED ~ region, data = df_carbon_clean)
 
-# Southern Ocean, seasonality, for southern tropics as well. 
+m %>% summary()
 
+anova_model <- aov(PRES_ADJUSTED ~ month , data = df_carbon_clean %>% filter(region == "North Atlantic"))
+
+# Perform Tukey's HSD post hoc test to see which months differ significantly
+tukey_results <- TukeyHSD(anova_model, conf.level = 0.95)
+print(tukey_results)
+
+# Seasonality of depth of subd Southern Ocean, seasonality, for southern tropics as well. 
+# Seasonality of carbon depth of subd Southern Ocean, seasonality, for southern tropics as well.
 ##############################################################################
 # 3) Fit the Exponential and Gamma distributions with fitdistrplus
 ##############################################################################
@@ -2010,35 +2022,18 @@ GOF_df
 # We'll illustrate with a histogram, scaled to density on the y-axis.
 # If you prefer a kernel density plot for the raw data, replace geom_histogram 
 # with geom_density, but note that `bins = 30` applies to histograms, not densities.
+carbon_pres_data$region <- carbon_pres_data$region %>% as_factor(levels="")
+
 distrib_carbon_subduction <- ggplot() +
   # 5a) Histogram of the original data, faceted by region
   geom_histogram(
     data = carbon_pres_data,
-    aes(x = PRES_ADJUSTED, y = ..density.., fill = region),
+    aes(x = PRES_ADJUSTED, fill = region),
     bins  = 30,
     color = "black",
-    fill  = "white",
     alpha = 0.8
-  ) +
-  # 5b) Overlaid lines from the fitted distributions
-  geom_line(
-    data = fitted_df,
-    aes(x = x, y = Density, color = Distribution),
-    size = 1
-  ) +
-  # 5c) Facet by region
+  ) + scale_fill_viridis_d()+
   facet_wrap(~ region, scales = "free_y") +
-  # 5d) Color scale and labeling
-  scale_color_manual(values = c("Exp" = "red", 
-                                "Gamma" = "blue", 
-                                "LogNormal" = "orange", 
-                                "Cauchy" = "purple", 
-                                "PL" = "green")) +
-  labs(
-    title = "Fitted Distributions by Region",
-    x     = "Pressure Adjusted",
-    y     = "Density"
-  ) +
   theme_minimal() +
   theme(legend.title = element_blank()) +
   # 5e) Customizing x-axis ticks
@@ -2061,7 +2056,18 @@ ggsave("figures/seasonal_carbon_subduction_depth_distribution.png",
        height = 8)
 
 
+# Plot ECDFs :
 
+carbon_pres_data %>%
+  ggplot(aes(x = PRES_ADJUSTED, color = region)) +
+  stat_ecdf(size = 1.2) +
+  labs(
+    title = "Empirical CDF of PRES_ADJUSTED by Region",
+    x = "PRES_ADJUSTED",
+    y = "Empirical Cumulative Probability",
+    color = "Region"
+  ) +
+  theme_minimal(base_size = 16) + scale_color_viri
 
 
 
