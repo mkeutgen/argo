@@ -15,6 +15,18 @@ cycle_number <- 50
 critical_pres <- c(270)
 
 # Functions
+finiteCenteredDiff <- function(vec) {
+  # Initialize the output vector of the same length as input, filled with NA
+  diffVec <- rep(NA, length(vec))
+  
+  # Compute the finite centered difference for elements that have neighbors
+  for(i in 2:(length(vec)-1)) {
+    diffVec[i] <- (vec[i+1] - vec[i-1]) / 2
+  }
+  
+  return(diffVec)
+}
+
 predict_AOU <- function(pressure,m,b) {
   m * pressure + b
 }
@@ -112,21 +124,22 @@ data_df <- data_df %>% filter(!is.na(DOXY)) %>% group_by(CYCLE_NUMBER) %>%
 
 
 
+data_df$BBP700_ADJUSTED <- rollmean(data_df$BBP700_ADJUSTED,k = 7,na.pad = TRUE)
 
 data.df.lf <- data_df %>%
   select(LATITUDE,LONGITUDE,TIME,CYCLE_NUMBER,PRES_ADJUSTED,AOU,SPIC,BBP700_ADJUSTED) %>%
   pivot_longer(cols = !c(LATITUDE,LONGITUDE,TIME,CYCLE_NUMBER,PRES_ADJUSTED))
 
-
-ggplot(data.df.lf,aes(x=PRES_ADJUSTED,y=value))+
-  facet_grid(.~name,scales = "free")+geom_line()+coord_flip()+
-  scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40))+
-  geom_vline(xintercept = 270)+theme_bw()
-
 # Quantification of the anomalies using Chen's method,
 
 # First safeguard, if points are close to one another (within 100 meters), choose one of them.
 adjusted_critical_pres <- average_close_pressures(critical_pres)
+
+
+ggplot(data.df.lf,aes(x=PRES_ADJUSTED,y=value))+
+  facet_grid(.~name,scales = "free")+geom_line()+coord_flip()+
+  scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40))+
+  geom_vline(xintercept = adjusted_critical_pres)+theme_bw()
 
 
 # Then find the peak, in absolute value, in AOU, SPIC and BBP between -100 and 100 meters
@@ -139,7 +152,7 @@ df <- df %>% select(SPIC,AOU,PRES_ADJUSTED,BBP700_ADJUSTED)
 # Find max in 100 pres_level above :
 
 
-find_max_AOU_above_below_peak <- function(df, peak_pres, range = 100) {
+find_max_AOU_above_below_peak <- function(df, peak_pres, range = 150) {
   # Filter the dataframe for the range below the peak
   df_below <- df %>%
     filter(PRES_ADJUSTED < peak_pres & PRES_ADJUSTED >= (peak_pres - range))
@@ -165,14 +178,14 @@ find_max_AOU_above_below_peak <- function(df, peak_pres, range = 100) {
   ))
 }
 # BBP700 anomaly
-find_max_BBP700_above_below_peak <- function(df, peak_pres, range = 100) {
+find_min_BBP700_above_below_peak <- function(df, peak_pres, range = 150) {
   # Filter the dataframe for the range below the peak
   df_below <- df %>%
     filter(PRES_ADJUSTED < peak_pres & PRES_ADJUSTED >= (peak_pres - range))
   
-  # Find the row with the maximum AOU in this range below the peak
-  max_BBP700_ADJUSTED_row_below <- df_below %>%
-    filter(BBP700_ADJUSTED == max(BBP700_ADJUSTED)) %>%
+  # Find the row with the min BBP700 in this range below the peak
+  min_BBP700_ADJUSTED_row_below <- df_below %>%
+    filter(BBP700_ADJUSTED == min(BBP700_ADJUSTED)) %>%
     slice(1) # In case there are multiple, just take the first
   
   # Filter the dataframe for the range above the peak
@@ -180,30 +193,34 @@ find_max_BBP700_above_below_peak <- function(df, peak_pres, range = 100) {
     filter(PRES_ADJUSTED > peak_pres & PRES_ADJUSTED <= (peak_pres + range))
   
   # Find the row with the maximum AOU in this range above the peak
-  max_BBP700_ADJUSTED_row_above <- df_above %>%
-    filter(BBP700_ADJUSTED == max(BBP700_ADJUSTED)) %>%
+  min_BBP700_ADJUSTED_row_above <- df_above %>%
+    filter(BBP700_ADJUSTED == min(BBP700_ADJUSTED)) %>%
     slice(1) # In case there are multiple, just take the first
   
   # Return both pressure levels
   return(list(
-    max_below = max_BBP700_ADJUSTED_row_below %>% select(PRES_ADJUSTED,BBP700_ADJUSTED) %>% ungroup(),
-    max_above = max_BBP700_ADJUSTED_row_above %>% select(PRES_ADJUSTED,BBP700_ADJUSTED) %>% ungroup()
+    min_below = min_BBP700_ADJUSTED_row_below %>% select(PRES_ADJUSTED,BBP700_ADJUSTED) %>% ungroup(),
+    min_above = min_BBP700_ADJUSTED_row_above %>% select(PRES_ADJUSTED,BBP700_ADJUSTED) %>% ungroup()
   ))
 }
 
-find_max_BBP700_above_below_peak(df,adjusted_critical_pres)
 
 peak.up_and_low_aou <- find_max_AOU_above_below_peak(df,peak_pres = adjusted_critical_pres)
+peak.up_and_low_bbp700 <- find_min_BBP700_above_below_peak(df,adjusted_critical_pres)
+
 
 
 # Extract coordinates of 2 maxima (below and above the detected minimum in AOU) 
 pres_bl <- peak.up_and_low_aou$max_below$PRES_ADJUSTED
 aou_bl <- peak.up_and_low_aou$max_below$AOU
-bbp_bl <- peak.up_and_low_aou$max_below$BBP700_ADJUSTED
+pres_bbp_bl <- peak.up_and_low_bbp700$min_below$PRES_ADJUSTED
+bbp_bl      <- peak.up_and_low_bbp700$min_below$BBP700_ADJUSTED
 
 pres_up <- peak.up_and_low_aou$max_above$PRES_ADJUSTED
 aou_up <- peak.up_and_low_aou$max_above$AOU
-bbp_up <- peak.up_and_low_aou$max_above$BBP700_ADJUSTED
+
+pres_bbp_up <- peak.up_and_low_bbp700$min_above$PRES_ADJUSTED
+bbp_up      <- peak.up_and_low_bbp700$min_above$BBP700_ADJUSTED
 
 
 # Calculate slope (m) and intercept (b) of the line
@@ -212,9 +229,9 @@ m_aou <- (aou_up - aou_bl) /
 b_aou <- aou_bl - m_aou * pres_bl
 
 m_bbp <- (bbp_up - bbp_bl) /
-  (pres_up - pres_bl)
+  (pres_bbp_up - pres_bbp_bl)
 
-b_bbp <- bbp_bl - m_bbp * pres_bl
+b_bbp <- bbp_bl - m_bbp * pres_bbp_bl
 
 
 # Function to compute predicted AOU at a given pressure level
@@ -234,12 +251,22 @@ ggplot(df,aes(x=PRES_ADJUSTED,y=AOU,color="AOU observed values"))+geom_line()+ge
   geom_line(aes(y=predicted_AOU,color="linear interpolation of AOU following Chen's method (Chen et al, 2021)"))+
   theme_bw()+theme(legend.position="bottom")
 
+ggplot(df,aes(x=PRES_ADJUSTED,y=BBP700_ADJUSTED,color="BBP700_ADJUSTED observed values"))+
+  geom_line()+geom_point()+coord_flip()+
+  scale_x_reverse()+
+  geom_point(aes(y=predicted_BBP700_ADJUSTED,color="linear interpolation of BBP700 following Chen's method (Chen et al, 2021)"))+
+  geom_line(aes(y=predicted_BBP700_ADJUSTED,color="linear interpolation of BBP700 following Chen's method (Chen et al, 2021)"))+
+  theme_bw()+theme(legend.position="bottom")
+
+
+
 # Compute the distances between adjacent pressure levels
 distances <- diff(df$PRES_ADJUSTED)
 
 # Calculate absolute differences between predicted and actual AOU for each segment
-differences_aou <- abs(df$predicted_AOU - df$AOU)
-differences_bbp <- abs(df$predicted_BBP700_ADJUSTED - df$BBP700_ADJUSTED)
+differences_aou <- abs(ifelse(df$predicted_AOU - df$AOU > 0,df$predicted_AOU - df$AOU,NA ))
+differences_bbp <- abs(ifelse(df$predicted_BBP700_ADJUSTED - df$BBP700_ADJUSTED < 0,
+                              df$predicted_BBP700_ADJUSTED - df$BBP700_ADJUSTED,0))
 
 
 avg_differences_aou <- (differences_aou[-length(differences_aou)] + differences_aou[-1]) / 2
@@ -249,8 +276,18 @@ trapezoid_areas_aou <- avg_differences_aou * distances
 trapezoid_areas_bbp <- avg_differences_bbp * distances
 
 
-# Sum up the areas of the trapezoids
+# Sum up the areas of the trapezoids this gives a depth integrated bbp700/aou anomaly in (m'-1 sr^-1) \times m
 total_area_aou <- sum(trapezoid_areas_aou, na.rm = TRUE)
 total_area_bbp <- sum(trapezoid_areas_bbp, na.rm = TRUE)
 
-# Transfer to production for quantiifcation of the BBP anomaly ALSO, see if applicable to smaller anomalies than the well defined Llort and Michael's anomalies
+# Relate it to carbon
+# POC= 9.776 \times 10^4 \times (bbp_700)^1.166
+
+# Define a function to compute POC from bbp_700
+poc_from_bbp_700 <- function(bbp_700) {
+  # Apply the given formula:
+  9.776e4 * (bbp_700 ^ 1.166)
+}
+
+integrated_poc <- poc_from_bbp_700(total_area_bbp) # 116.0632 mg/m^2 day/hour 
+

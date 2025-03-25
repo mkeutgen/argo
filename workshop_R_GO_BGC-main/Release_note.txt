@@ -1,0 +1,107 @@
+RELEASE NOTES FOR USERS OF THE ONEARGO-R TOOLBOX
+
+Version 1.0.1
+
+This version is an upgrade of the to version 3.0 of the BGC-Argo-R
+toolbox (described below).
+
+It expands access to all Argo float data. The select_profiles
+function now has an additional optional argument 'type', whose value can
+be set to either 'bgc', 'phys' (core and deep),  or 'all' (default setting).
+If the type is not specified, but sensors are, the type will be set
+to 'bgc' if sensors other than pressure, temperature, and/or salinity are
+selected.
+
+Previously written scripts that use select_profiles calls that implicitly
+assume BGC only floats (but not specify BGC sensors) should 
+have 'type','bgc' added to the calls to the select_profiles function.
+
+In previous versions, all floats that are listed in the Sprof index
+file were considered BGC floats. However, there are (183, as of
+April 2022) floats that are listed in the Sprof index file, but
+have only physical (pressure, temperature, salinity) sensors. These
+will now be labeled as physical floats.
+
+For BGC floats, only Sprof (not prof) files will be downloaded and used,
+even if only physical variables (p, T, S) are currently used for plots etc.
+
+==========================================================================
+
+RELEASE NOTES FOR USERS OF THE BGC-ARGO_R TOOLBOX
+
+(https://github.com/euroargodev/BGC-ARGO_R_WORKSHOP)
+
+Version 3.0 (May 2022)
+
+This version adds a new type of plot (time series) that can be used
+either per float or with multiple floats in one plot. If it is used
+to plot each float's time series separately, a second variable can
+be plotted for comparison.
+
+The missing function get_lon_lat_time required in the Main_workshop 
+has been added (load the lon, lat and time from specified floats).
+The plot functions and get_multi_profile_mean were corrected to be able 
+to deal with selections of floats that does not all show the wanted variables.
+
+A bug in the plot_profile function were corrected in order to actually 
+plot all profiles of selected floats (and not only one float data).
+
+The depth_interp function was modified so it can now skip profiles with 
+not enough PRES values.
+
+
+Version 2.1 (January 2022)
+
+The most important change since version 1.0 regards the evaluation of
+the index file (argo_synthetic-profile_index.txt). Previously, its
+information was used to determine the number of profiles for each float
+and the availability of sensors. Now it is only used for an initial
+selection of potential floats. Then the matching Sprof files are
+downloaded (if necessary), and the indices of matching profiles are
+determined from the Sprof file.
+This required a change in all functions and scripts that call function
+select_profiles. The previous call signature was
+with "profiles" and "floats" as outputs.
+The new output are "float_ids" and "float_profs".
+
+That is, the previous second return value is now the first return value.
+Instead of a global profile index (the previous first return value) there
+is now a cell array with per-float profile indices as the second return
+value. This cell array can be used directly as value for the
+'float_profs' key in variable arguments in calls to functions
+show_trajectories, show_profiles, show_sections, load_float_data and
+get_lon_lat_time.
+The total number of matching profiles can be computed with, e.g.:
+sum(lengths(output_of_select_profile_function$float_profs))
+The p2f and fprofid members of global Sprof were deleted.
+
+The Float$wmoid array is now stored as numbers instead of strings.
+
+initialize_argo.R has some sections rearranged, so that all user-specific
+settings are at the beginning of the function in a clearly delineated block.
+
+show_profiles, show_sections, show_trajectories:
+The first argument must always be an array of float IDs.
+Variable option 'type' is obsolete and will be ignored. Subsets of
+profiles can be specified with the 'float_profs',float_profs key/value option.
+main_workshop.m was updated to show the revised way of calling these functions.
+
+show_trajectories has a new option 'position' with possible values 'first' or
+'last' to show only the first or last position of each specified float.
+It also has a new option 'title' that allows the user to specify a custom
+title for the plot (default is "Float trajectories").
+
+select_profiles now allows the selection of floats and profiles (in addition
+to lon/lat/time and sensor) by 'ocean' ('A', 'P', or 'I') and 'mode'
+('R' = real time, 'A' = adjusted, 'D' = delayed mode; any combination
+of these can be used).
+
+Auxilary functions have been moved to a dedicated folder (now called in the main_workshop).
+
+A function has also been created to load/install the required packages (load_library.R).
+
+Load_float_data has a new option  ‘format’ , which allows the users to specify the format of 
+exported float data  (‘list’ or ‘data frame’).
+
+ A new created function namely “get_lon_lat_time’ enables  the users to extract the longitude, 
+latitude and sampling date by given a set of float IDs and profile index.
