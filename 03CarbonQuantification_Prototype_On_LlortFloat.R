@@ -124,6 +124,7 @@ data_df <- data_df %>% filter(!is.na(DOXY)) %>% group_by(CYCLE_NUMBER) %>%
 
 
 
+data_df$BBP700_ADJUSTED <- rollmean(data_df$BBP700_ADJUSTED,k = 7,na.pad = TRUE)
 
 data.df.lf <- data_df %>%
   select(LATITUDE,LONGITUDE,TIME,CYCLE_NUMBER,PRES_ADJUSTED,AOU,SPIC,BBP700_ADJUSTED) %>%
@@ -249,6 +250,7 @@ ggplot(df,aes(x=PRES_ADJUSTED,y=AOU,color="AOU observed values"))+geom_line()+ge
 ggplot(df,aes(x=PRES_ADJUSTED,y=BBP700_ADJUSTED,color="BBP700_ADJUSTED observed values"))+
   geom_line()+geom_point()+coord_flip()+
   scale_x_reverse()+
+  geom_point(aes(y=predicted_BBP700_ADJUSTED,color="linear interpolation of BBP700 following Chen's method (Chen et al, 2021)"))+
   geom_line(aes(y=predicted_BBP700_ADJUSTED,color="linear interpolation of BBP700 following Chen's method (Chen et al, 2021)"))+
   theme_bw()+theme(legend.position="bottom")
 
@@ -269,8 +271,18 @@ trapezoid_areas_aou <- avg_differences_aou * distances
 trapezoid_areas_bbp <- avg_differences_bbp * distances
 
 
-# Sum up the areas of the trapezoids
+# Sum up the areas of the trapezoids this gives a depth integrated bbp700/aou anomaly in (m'-1 sr^-1) \times m
 total_area_aou <- sum(trapezoid_areas_aou, na.rm = TRUE)
 total_area_bbp <- sum(trapezoid_areas_bbp, na.rm = TRUE)
 
+# Relate it to carbon
+# POC= 9.776 \times 10^4 \times (bbp_700)^1.166
 
+# Define a function to compute POC from bbp_700
+poc_from_bbp_700 <- function(bbp_700) {
+  # Apply the given formula:
+  9.776e4 * (bbp_700 ^ 1.166)
+}
+ 
+poc_from_bbp_700(total_area_bbp) # 1646.414 mg/m^2 day/hour without bbp_700 smoothing
+# 709.3415 mg/m^2 

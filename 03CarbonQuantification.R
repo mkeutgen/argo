@@ -133,7 +133,7 @@ data.df.lf <- data_df %>%
 ggplot(data.df.lf,aes(x=PRES_ADJUSTED,y=value))+
   facet_grid(.~name,scales = "free")+geom_line()+coord_flip()+
   scale_x_reverse(limits = c(900, 0), breaks = seq(0, 900, by = 40))+
-  geom_vline(xintercept = adjusted_critical_pres)+theme_bw()
+  geom_vline(xintercept = critical_pres)+theme_bw()
 
 # Quantification of the anomalies using Chen's method,
 
