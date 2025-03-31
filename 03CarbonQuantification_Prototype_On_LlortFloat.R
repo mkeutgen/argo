@@ -7,7 +7,8 @@
 # Strategy : develop a prototype on Llort Float 5904677 profile 27
 # Innovation : integrated anomaly
 # Prereq : run Tutorial.R file from OneArgoR toolbox to be able to download float data
-
+# !! File is wrong, integral of BBP_700 is done then mapped to POC but it is not mathematically correct!! 
+# !!Check Carbon Quanti on All floats for correction
 # Prototype 
 
 wmo <- 5904677
