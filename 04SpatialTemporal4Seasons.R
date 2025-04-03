@@ -32,7 +32,7 @@ setwd("/data/GLOBARGO/src/")
 df_argo_clean <- read_csv("data/df_argo_loc.csv")
 df_complete_clean <- read_csv("data/df_eddy_subduction_anom.csv")
 df_carbon_clean <- read_csv("data/df_carbon_subduction_anom.csv")
-
+df_carbon_with_poc <- read_csv("data/df_carbon_subduction_anom_with_poc.csv")
 
 # --- 1) Create WEEK and YEAR columns, then define bin edges ---
 df_argo_clean <- df_argo_clean %>%
@@ -440,6 +440,10 @@ df_carbon_mam <- df_carbon_clean %>% filter(month(TIME) %in% mam_months)
 df_carbon_jja <- df_carbon_clean %>% filter(month(TIME) %in% jja_months)
 df_carbon_son <- df_carbon_clean %>% filter(month(TIME) %in% son_months)
 
+df_carbon_poc_djf <- df_carbon_with_poc %>% filter(month(TIME) %in% djf_months)
+df_carbon_poc_mam <- df_carbon_with_poc %>% filter(month(TIME) %in% mam_months)
+df_carbon_poc_jja <- df_carbon_with_poc %>% filter(month(TIME) %in% jja_months)
+df_carbon_poc_son <- df_carbon_with_poc %>% filter(month(TIME) %in% son_months)
 
 
 
@@ -953,6 +957,18 @@ pred_djf_carb <- predict_gam(gam_djf_carb, merged_carbon_counts_djf, step = 1)
 pred_mam_carb <- predict_gam(gam_mam_carb, merged_carbon_counts_mam, step = 1)
 pred_jja_carb <- predict_gam(gam_jja_carb, merged_carbon_counts_jja, step = 1)
 pred_son_carb <- predict_gam(gam_son_carb, merged_carbon_counts_son, step = 1)
+
+pred_djf_carb$season <- "DJF"
+pred_mam_carb$season <- "MAM"
+pred_jja_carb$season <- "JJA"
+pred_son_carb$season <- "SON"
+
+pred_son_carb_season_combined <- rbind(pred_djf_carb,
+      pred_mam_carb,
+      pred_jja_carb,
+      pred_son_carb)
+
+saveRDS(pred_son_carb_season_combined,"data/pred_grid_carb_prob.Rds")
 
 # Global min/max for carbon subduction
 carb_values <- c(pred_djf_carb$proportion, pred_mam_carb$proportion,

@@ -316,8 +316,29 @@ summary_results <- read_csv("/data/GLOBARGO/src/data/integrated_anomalies_summar
 robust_data <- summary_results %>% filter(integrated_poc <= 5000)
 
 ggplot(robust_data, aes(x = integrated_poc)) +
-  geom_histogram(bins = 60,  color = "white",position = "dodge") +
+  geom_histogram(bins = 60,position = "dodge") +
   labs(x = "Integrated POC",
        y = "Frequency",
-       title = "Histogram of Integrated POC (Values <= 5000)") +
-  theme_minimal()
+       title = "Histogram of Integrated POC (Values <= 5000, removed 7 outliers)") +
+  theme_minimal()+scale_fill_viridis()
+
+integ_poc_fig <- ggplot(robust_data, aes(x = integrated_poc)) +
+  geom_histogram(bins = 60, fill = viridis::viridis(1)) +
+  labs(x = "Integrated POC",
+       y = "Frequency",
+       title = "Histogram of Integrated POC (Values <= 5000, removed 7 outliers)") +
+  theme_minimal(base_size = 25)
+
+ggsave("figures/integ_poc_fig.png",plot = integ_poc_fig^)
+
+robust_data$integrated_poc %>% summary()
+
+View(summary_results)
+
+robust_data <- robust_data %>%
+  left_join(
+    df_carbon_clean %>% select(WMO, CYCLE_NUMBER, LATITUDE, LONGITUDE,TIME),
+    by = c("WMO", "CYCLE_NUMBER")
+  )
+
+write_csv(robust_data,file="/data/GLOBARGO/src/data/df_carbon_subduction_anom_with_poc.csv")
